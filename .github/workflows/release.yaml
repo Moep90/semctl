@@ -37,10 +37,11 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
-          ref: ${{ inputs.tag || github.ref_name }}
 
-      - name: Ensure tags are present
-        run: git fetch --tags --force origin || true
+      - name: Checkout release tag
+        run: |
+          git fetch --tags --force origin
+          git checkout "${{ inputs.tag || github.ref_name }}" -b release-branch
 
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.3.0
         with:
