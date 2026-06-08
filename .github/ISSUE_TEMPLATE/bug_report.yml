@@ -1,0 +1,55 @@
+name: Bug Report
+description: Report a problem or unexpected behavior
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        > **Disclaimer:** `semctl` is an independent, open-source command line interface for Semaphore UI. It is **not affiliated with, endorsed by, sponsored by, or officially connected to the Semaphore UI project or its creators**. This tool is intended for personal use, educational purposes, and operational convenience at your own risk. All product names, logos, and brands are property of their respective owners.
+
+        Thanks for taking the time to report a bug. Please fill out the fields below so we can reproduce and fix the issue.
+  - type: input
+    id: version
+    attributes:
+      label: semctl version
+      description: Output of `semctl --version`
+      placeholder: e.g., 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      description: Your OS and architecture
+      placeholder: e.g., macOS 14 arm64, Ubuntu 24.04 amd64
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the bug and what you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Provide the exact commands and inputs that trigger the issue.
+      placeholder: |
+        1. semctl auth login ...
+        2. semctl project list ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: debug
+    attributes:
+      label: Debug output
+      description: If possible, run the failing command with `--debug` and paste the redacted output.
+      render: shell
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else that might help us understand the issue.
