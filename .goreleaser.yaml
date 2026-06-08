@@ -108,3 +108,16 @@ signs:
       - --yes
       - ${artifact}
     artifacts: all
+
+brews:
+  - name: semctl
+    repository:
+      owner: Moep90
+      name: homebrew-tap
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    commit_msg_template: "brew: update {{ .ProjectName }} to {{ .Tag }}"
+    homepage: https://github.com/moep90/semaphore-cli
+    description: A command line interface for Semaphore UI.
+    license: Apache-2.0
+    test: |
+      system "#{bin}/semctl", "version"
