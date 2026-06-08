@@ -101,7 +101,7 @@ This is the escape hatch for endpoints not yet covered by first-class commands.`
 			extraHeaders := make(http.Header)
 			for _, h := range headers {
 				parts := strings.SplitN(h, ":", 2)
-				if len(parts) != 2 {
+				if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" {
 					return fmt.Errorf("invalid header: %s", h)
 				}
 				extraHeaders.Set(strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
@@ -119,6 +119,14 @@ This is the escape hatch for endpoints not yet covered by first-class commands.`
 			}
 
 			if resp.StatusCode >= 400 {
+				if ctx.Printer.Mode == output.ModeJSON {
+					_ = json.NewEncoder(ctx.Printer.Stdout).Encode(map[string]string{"error": fmt.Sprintf("api error %d", resp.StatusCode)})
+					return nil
+				}
+				if ctx.Printer.Mode == output.ModeYAML {
+					_ = yaml.NewEncoder(ctx.Printer.Stdout).Encode(map[string]string{"error": fmt.Sprintf("api error %d", resp.StatusCode)})
+					return nil
+				}
 				return &semapi.Error{StatusCode: resp.StatusCode, Body: data}
 			}
 

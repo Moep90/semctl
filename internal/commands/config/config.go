@@ -16,6 +16,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -168,7 +169,10 @@ func newProfileUseCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			name := args[0]
+			name := strings.TrimSpace(args[0])
+			if name == "" {
+				return fmt.Errorf("profile name cannot be empty")
+			}
 			if cfg.Profiles[name] == nil {
 				return fmt.Errorf("profile not found: %s", name)
 			}
@@ -196,7 +200,10 @@ func newProfileCreateCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			name := args[0]
+			name := strings.TrimSpace(args[0])
+			if name == "" {
+				return fmt.Errorf("profile name cannot be empty")
+			}
 			if cfg.Profiles[name] != nil {
 				return fmt.Errorf("profile already exists: %s", name)
 			}
@@ -224,7 +231,10 @@ func newProfileDeleteCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			name := args[0]
+			name := strings.TrimSpace(args[0])
+			if name == "" {
+				return fmt.Errorf("profile name cannot be empty")
+			}
 			if cfg.Profiles[name] == nil {
 				return fmt.Errorf("profile not found: %s", name)
 			}

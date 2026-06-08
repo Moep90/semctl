@@ -79,6 +79,9 @@ func BuildContext(cfg *config.Config, hostFlag, projectFlag, outputFlag, profile
 	token := auth.GetToken(ctx.Host, cfg)
 	tokenSource := auth.GetTokenSource(ctx.Host, cfg)
 	ctx.Client = api.NewClientWithSource(ctx.Host, token, tokenSource)
+	if ctx.Debug {
+		ctx.Client = ctx.Client.WithDebug(os.Stderr)
+	}
 
 	// Resolve output mode.
 	modeStr := firstNonEmpty(outputFlag, os.Getenv("SEMAPHORE_OUTPUT"), profileField(profile, func(p *config.Profile) string { return p.DefaultOutput }))
@@ -230,7 +233,8 @@ func BuildCmdContext(cmd *cobra.Command) (*Context, error) {
 	verbose, _ := cmd.Flags().GetBool("verbose")
 	debug, _ := cmd.Flags().GetBool("debug")
 
-	if jsonFlag {
+	// Only apply --json shorthand when --output was not explicitly set.
+	if jsonFlag && !cmd.Flags().Changed("output") {
 		outputFlag = "json"
 	}
 

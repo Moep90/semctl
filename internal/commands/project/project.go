@@ -145,7 +145,8 @@ func buildCmdContext(cmd *cobra.Command) (*cli.Context, error) {
 	verbose, _ := cmd.Flags().GetBool("verbose")
 	debug, _ := cmd.Flags().GetBool("debug")
 
-	if jsonFlag {
+	// Only apply --json shorthand when --output was not explicitly set.
+	if jsonFlag && !cmd.Flags().Changed("output") {
 		outputFlag = "json"
 	}
 

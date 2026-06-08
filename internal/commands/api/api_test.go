@@ -125,8 +125,33 @@ func TestAPIErrorResponse(t *testing.T) {
 	root := newTestRoot(&buf)
 	root.SetArgs([]string{"api", "GET", "/missing", "--host", srv.URL, "--output", "json"})
 	err := root.Execute()
+	// api command with --output json returns nil after writing JSON error to stdout.
+	if err != nil {
+		t.Fatalf("expected no error (JSON error on stdout), got: %v", err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &out); err != nil {
+		t.Fatalf("expected JSON error on stdout, got: %s", buf.String())
+	}
+	if out["error"] == "" {
+		t.Fatalf("expected error key in JSON, got: %v", out)
+	}
+}
+
+func TestAPIInvalidHeader(t *testing.T) {
+	tmp := t.TempDir()
+	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
+	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
+
+	var buf bytes.Buffer
+	root := newTestRoot(&buf)
+	root.SetArgs([]string{"api", "GET", "/projects", "--host", "http://example.com", "--header", ":"})
+	err := root.Execute()
 	if err == nil {
-		t.Fatal("expected error for 404")
+		t.Fatal("expected error for invalid header")
+	}
+	if !strings.Contains(err.Error(), "invalid header") {
+		t.Fatalf("expected invalid header error, got: %v", err)
 	}
 }
 

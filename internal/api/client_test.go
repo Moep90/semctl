@@ -15,6 +15,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -273,6 +274,31 @@ func TestIsRetryableError(t *testing.T) {
 	}
 	if isRetryableError(errors.New("some random error")) {
 		t.Error("random error should not be retryable")
+	}
+}
+
+func TestDebugOutput(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/ping", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	var buf bytes.Buffer
+	c := NewClient(srv.URL, "tok").WithDebug(&buf)
+	resp, err := c.Do(context.Background(), "GET", "/ping", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	out := buf.String()
+	if !strings.Contains(out, "[debug]") {
+		t.Fatalf("expected debug output, got: %s", out)
+	}
+	if !strings.Contains(out, "auth: using bearer token source") {
+		t.Fatalf("expected auth debug, got: %s", out)
 	}
 }
 
