@@ -76,6 +76,16 @@ func GetToken(host string, cfg *config.Config) string {
 	return ""
 }
 
+// GetTokenSource returns the token source (bearer or cookie) for a host.
+func GetTokenSource(host string, cfg *config.Config) string {
+	if p := cfg.ActiveProfile(); p != nil && p.Host == host {
+		if p.TokenSource != "" {
+			return p.TokenSource
+		}
+	}
+	return "bearer"
+}
+
 // Login attempts to authenticate with a token and returns the user if successful.
 func Login(ctx context.Context, client *api.Client) (*api.User, error) {
 	resp, err := client.Do(ctx, "GET", "/user", nil)

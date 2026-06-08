@@ -112,6 +112,69 @@ func TestResolveTemplateCaseInsensitive(t *testing.T) {
 	}
 }
 
+func TestResolveInventoryByName(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/project/1/inventory", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]api.Inventory{
+			{ID: 3, Name: "prod-hosts"},
+			{ID: 4, Name: "dev-hosts"},
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := api.NewClient(srv.URL, "")
+	id, err := ResolveInventory(context.Background(), c, 1, "dev-hosts")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if id != 4 {
+		t.Fatalf("expected 4, got %d", id)
+	}
+}
+
+func TestResolveEnvironmentByName(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/project/1/environment", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]api.Environment{
+			{ID: 5, Name: "staging"},
+			{ID: 6, Name: "production"},
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := api.NewClient(srv.URL, "")
+	id, err := ResolveEnvironment(context.Background(), c, 1, "production")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if id != 6 {
+		t.Fatalf("expected 6, got %d", id)
+	}
+}
+
+func TestResolveKeystoreByName(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/project/1/keys", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]api.Keystore{
+			{ID: 7, Name: "deploy-key"},
+			{ID: 8, Name: "vault-pass"},
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := api.NewClient(srv.URL, "")
+	id, err := ResolveKeystore(context.Background(), c, 1, "vault-pass")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if id != 8 {
+		t.Fatalf("expected 8, got %d", id)
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
 }

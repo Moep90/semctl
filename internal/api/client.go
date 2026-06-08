@@ -28,18 +28,25 @@ import (
 
 // Client is a Semaphore UI API client.
 type Client struct {
-	baseURL    string
-	token      string
-	httpClient *http.Client
-	maxRetries int
-	backoff    []time.Duration
+	baseURL     string
+	token       string
+	tokenSource string
+	httpClient  *http.Client
+	maxRetries  int
+	backoff     []time.Duration
 }
 
 // NewClient creates a new API client.
 func NewClient(baseURL, token string) *Client {
+	return NewClientWithSource(baseURL, token, "bearer")
+}
+
+// NewClientWithSource creates a new API client with a specific token source.
+func NewClientWithSource(baseURL, token, tokenSource string) *Client {
 	return &Client{
-		baseURL: strings.TrimSuffix(baseURL, "/"),
-		token:   token,
+		baseURL:     strings.TrimSuffix(baseURL, "/"),
+		token:       token,
+		tokenSource: tokenSource,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -130,7 +137,11 @@ func (c *Client) doOnce(ctx context.Context, method, path string, body any, extr
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	if c.token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.token)
+		if c.tokenSource == "cookie" {
+			req.Header.Set("Cookie", "semaphore="+c.token)
+		} else {
+			req.Header.Set("Authorization", "Bearer "+c.token)
+		}
 	}
 	for k, vv := range extra {
 		for _, v := range vv {

@@ -151,6 +151,11 @@ func printTask(ctx context.Context, c *cli.Context, taskID int) error {
 func newRunCommand() *cobra.Command {
 	var message string
 	var branch string
+	var environment string
+	var inventory string
+	var limit string
+	var diff bool
+	var dryRun bool
 	var watch bool
 	var exitCode bool
 	cmd := &cobra.Command{
@@ -168,7 +173,8 @@ a status-specific exit code suitable for CI pipelines:
   4  CLI or API error`,
 		Example: `  semctl task run deploy-prod --message "Deploy release 1.8.3"
   semctl task run deploy-prod --watch --exit-code
-  semctl task run deploy-prod --message "hotfix" --branch release/1.8`,
+  semctl task run deploy-prod --message "hotfix" --branch release/1.8
+  semctl task run deploy-prod --environment 1 --inventory 2 --limit "web*" --diff --dry-run`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, err := cli.BuildCmdContext(cmd)
@@ -189,6 +195,21 @@ a status-specific exit code suitable for CI pipelines:
 			}
 			if branch != "" {
 				body["git_branch"] = branch
+			}
+			if environment != "" {
+				body["environment_id"] = environment
+			}
+			if inventory != "" {
+				body["inventory_id"] = inventory
+			}
+			if limit != "" {
+				body["limit"] = limit
+			}
+			if diff {
+				body["diff"] = true
+			}
+			if dryRun {
+				body["dry_run"] = true
 			}
 
 			resp, err := ctx.Client.Do(cmd.Context(), "POST", fmt.Sprintf("/project/%d/tasks", projectID), body)
@@ -211,6 +232,11 @@ a status-specific exit code suitable for CI pipelines:
 	}
 	cmd.Flags().StringVar(&message, "message", "", "Task message")
 	cmd.Flags().StringVar(&branch, "branch", "", "Git branch override")
+	cmd.Flags().StringVar(&environment, "environment", "", "Environment ID or name")
+	cmd.Flags().StringVar(&inventory, "inventory", "", "Inventory ID or name")
+	cmd.Flags().StringVar(&limit, "limit", "", "Ansible limit pattern")
+	cmd.Flags().BoolVar(&diff, "diff", false, "Show diff mode")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Dry run mode")
 	cmd.Flags().BoolVar(&watch, "watch", false, "Wait for the task to complete")
 	cmd.Flags().BoolVar(&exitCode, "exit-code", false, "Return task status as process exit code")
 	return cmd

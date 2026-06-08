@@ -69,7 +69,37 @@ type Info struct {
 	Version string `json:"version,omitempty"`
 }
 
+// AuthLoginRequest is sent to the cookie-based login endpoint.
+type AuthLoginRequest struct {
+	Auth     string `json:"auth"`
+	Password string `json:"password"`
+}
+
 // AuthLoginResponse is returned by the login endpoint.
 type AuthLoginResponse struct {
 	Token string `json:"token"`
+}
+
+// Inventory is a Semaphore UI inventory.
+type Inventory struct {
+	ID        int    `json:"id"`
+	Name      string `json:"name"`
+	ProjectID int    `json:"project_id,omitempty"`
+	Type      string `json:"type,omitempty"`
+}
+
+// Environment is a Semaphore UI environment.
+type Environment struct {
+	ID        int    `json:"id"`
+	Name      string `json:"name"`
+	ProjectID int    `json:"project_id,omitempty"`
+	JSON      string `json:"json,omitempty"`
+}
+
+// Keystore is a Semaphore UI access key / keystore entry.
+type Keystore struct {
+	ID        int    `json:"id"`
+	Name      string `json:"name"`
+	ProjectID int    `json:"project_id,omitempty"`
+	Type      string `json:"type,omitempty"`
 }
