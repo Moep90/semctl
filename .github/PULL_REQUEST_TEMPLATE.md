@@ -4,6 +4,8 @@
 
 Brief description of what this PR does and why.
 
+> ⚠️ **Please make sure the PR title follows [Conventional Commits](https://www.conventionalcommits.org/)** (e.g. `feat: add runner list command`, `fix: resolve panic on nil pointer`). The title is used as the merge commit message and determines the next release version.
+
 ## Checklist
 
 - [ ] I have read the [Contributing Guidelines](CONTRIBUTING.md).

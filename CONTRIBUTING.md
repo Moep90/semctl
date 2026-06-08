@@ -70,6 +70,17 @@ feat: add runner list command
 Adds the `semctl runner list` command with table and JSON output.
 ```
 
+## Automated Releases
+
+This project uses automated releases. After a PR is merged to `main`:
+
+1. **Release Please** analyzes the conventional commits since the last release and opens a *Release PR* with the changelog and proposed version bump.
+2. A maintainer reviews and merges the Release PR.
+3. Merging the Release PR creates a new `v*` git tag, which triggers the existing `release.yaml` CI workflow.
+4. **GoReleaser** builds binaries, generates SBOMs, signs artifacts with cosign, publishes `.deb`/`.rpm` packages, and updates the Homebrew tap.
+
+**Important:** Pull request titles are validated by CI and must follow Conventional Commits. The title is used as the squash-merge commit message, which Release Please reads to determine the next version.
+
 ## Testing
 
 - **Unit tests:** cover pure logic, config precedence, auth, output rendering, and error mapping.
