@@ -109,6 +109,48 @@ func TestListCommandJSON(t *testing.T) {
 	}
 }
 
+func TestGetCommand(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]api.Project{
+			{ID: 1, Name: "infra"},
+			{ID: 2, Name: "app"},
+		})
+	})
+	mux.HandleFunc("/api/project/2", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(api.Project{ID: 2, Name: "app", MaxParallelTasks: 3})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	tmp := t.TempDir()
+	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
+	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	root := newTestRoot(nil)
+	root.SetArgs([]string{"project", "get", "app", "--host", srv.URL})
+	err := root.Execute()
+
+	_ = w.Close()
+	os.Stdout = oldStdout
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	data, _ := io.ReadAll(r)
+	out := string(data)
+	if !strings.Contains(out, "app") {
+		t.Fatalf("expected app in output, got: %s", out)
+	}
+	if !strings.Contains(out, "max_parallel_tasks") {
+		t.Fatalf("expected max_parallel_tasks in output, got: %s", out)
+	}
+}
+
 func newTestRoot(out *bytes.Buffer) *cobra.Command {
 	root := &cobra.Command{
 		Use:           "semctl",
