@@ -53,6 +53,37 @@ func TestGetTokenProfile(t *testing.T) {
 	}
 }
 
+func TestGetTokenProfileTrailingSlash(t *testing.T) {
+	_ = os.Unsetenv("SEMAPHORE_TOKEN")
+
+	cfg := config.DefaultConfig()
+	cfg.CurrentProfile = "prod"
+	cfg.Profiles["prod"] = &config.Profile{
+		Host:  "https://semaphore.example.com/",
+		Token: "profile-token",
+	}
+
+	// Query without trailing slash should still match.
+	tok := GetToken("https://semaphore.example.com", cfg)
+	if tok != "profile-token" {
+		t.Fatalf("expected profile-token, got %s", tok)
+	}
+}
+
+func TestGetTokenSourceTrailingSlash(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.CurrentProfile = "prod"
+	cfg.Profiles["prod"] = &config.Profile{
+		Host:        "https://semaphore.example.com/",
+		TokenSource: "cookie",
+	}
+
+	src := GetTokenSource("https://semaphore.example.com", cfg)
+	if src != "cookie" {
+		t.Fatalf("expected cookie, got %s", src)
+	}
+}
+
 func TestLogin(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/user", func(w http.ResponseWriter, r *http.Request) {

@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strings"
 
 	"github.com/zalando/go-keyring"
 
@@ -59,6 +60,10 @@ func Delete(host string) error {
 	return keyring.Delete(keyringService, krUser)
 }
 
+func normalizeHost(host string) string {
+	return strings.TrimSuffix(host, "/")
+}
+
 // GetToken resolves the authentication token using the precedence:
 // 1. Environment variable SEMAPHORE_TOKEN
 // 2. OS keyring for the host
@@ -70,7 +75,7 @@ func GetToken(host string, cfg *config.Config) string {
 	if t, err := Retrieve(host); err == nil && t != "" {
 		return t
 	}
-	if p := cfg.ActiveProfile(); p != nil && p.Host == host {
+	if p := cfg.ActiveProfile(); p != nil && normalizeHost(p.Host) == normalizeHost(host) {
 		return p.Token
 	}
 	return ""
@@ -78,7 +83,7 @@ func GetToken(host string, cfg *config.Config) string {
 
 // GetTokenSource returns the token source (bearer or cookie) for a host.
 func GetTokenSource(host string, cfg *config.Config) string {
-	if p := cfg.ActiveProfile(); p != nil && p.Host == host {
+	if p := cfg.ActiveProfile(); p != nil && normalizeHost(p.Host) == normalizeHost(host) {
 		if p.TokenSource != "" {
 			return p.TokenSource
 		}

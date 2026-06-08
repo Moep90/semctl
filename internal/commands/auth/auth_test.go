@@ -17,6 +17,8 @@ package auth
 import (
 	"bytes"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -62,6 +64,47 @@ func TestLogoutCommandRespectsHostFlag(t *testing.T) {
 	}
 	if strings.Contains(out, "http://profile.example.com") {
 		t.Fatalf("expected profile host to NOT be in output, got: %s", out)
+	}
+}
+
+func TestCookieLoginFailure(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/auth/login", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"invalid credentials"}`))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	tmp := t.TempDir()
+	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
+	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
+
+	// Pipe username and password to stdin.
+	oldStdin := os.Stdin
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stdin = r
+	os.Stderr = w // capture prompts too
+	go func() {
+		_, _ = io.WriteString(w, "admin\n")
+		_, _ = io.WriteString(w, "badpass\n")
+		_ = w.Close()
+	}()
+
+	root := newTestRoot(nil)
+	root.AddCommand(NewAuthCommand())
+	root.SetArgs([]string{"auth", "login", srv.URL, "--cookie"})
+	err := root.Execute()
+
+	os.Stdin = oldStdin
+	os.Stderr = oldStderr
+
+	if err == nil {
+		t.Fatal("expected error for failed cookie login")
+	}
+	if !strings.Contains(err.Error(), "401") {
+		t.Fatalf("expected 401 in error, got: %v", err)
 	}
 }
 

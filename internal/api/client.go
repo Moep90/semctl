@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -78,7 +79,10 @@ func (c *Client) DoWithHeaders(ctx context.Context, method, path string, body an
 	var lastErr error
 	for attempt := 0; attempt <= c.maxRetries; attempt++ {
 		if attempt > 0 {
-			delay := c.backoff[attempt-1]
+			delay := c.backoff[len(c.backoff)-1]
+			if attempt-1 < len(c.backoff) {
+				delay = c.backoff[attempt-1]
+			}
 			select {
 			case <-time.After(delay):
 			case <-ctx.Done():
@@ -161,12 +165,15 @@ func isRetryableError(err error) bool {
 	if err == nil {
 		return false
 	}
+	// Never retry context cancellation or deadline exceeded.
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
 	// Network-level errors are generally retryable.
 	if urlErr, ok := err.(*url.Error); ok {
 		return urlErr.Temporary() || urlErr.Timeout()
 	}
-	// Fallback: any wrapped error that isn't a known client-side error.
-	return true
+	return false
 }
 
 func isRetryableStatus(code int) bool {

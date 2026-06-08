@@ -140,9 +140,14 @@ func buildCmdContext(cmd *cobra.Command) (*cli.Context, error) {
 	projectFlag, _ := cmd.Flags().GetString("project")
 	outputFlag, _ := cmd.Flags().GetString("output")
 	profileFlag, _ := cmd.Flags().GetString("profile")
+	jsonFlag, _ := cmd.Flags().GetBool("json")
 	noColor, _ := cmd.Flags().GetBool("no-color")
 	verbose, _ := cmd.Flags().GetBool("verbose")
 	debug, _ := cmd.Flags().GetBool("debug")
+
+	if jsonFlag {
+		outputFlag = "json"
+	}
 
 	cfg, err := config.Load()
 	if err != nil {

@@ -109,6 +109,71 @@ func TestRunCommand(t *testing.T) {
 	}
 }
 
+func TestRunCommandWithEnvInvResolution(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]api.Project{{ID: 1, Name: "infra"}})
+	})
+	mux.HandleFunc("/api/project/1/templates", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]api.Template{{ID: 7, Name: "deploy-prod"}})
+	})
+	mux.HandleFunc("/api/project/1/environment", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]api.Environment{
+			{ID: 5, Name: "staging"},
+			{ID: 6, Name: "production"},
+		})
+	})
+	mux.HandleFunc("/api/project/1/inventory", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]api.Inventory{
+			{ID: 10, Name: "prod-hosts"},
+			{ID: 11, Name: "dev-hosts"},
+		})
+	})
+	mux.HandleFunc("/api/project/1/tasks", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("expected POST, got %s", r.Method)
+		}
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		// environment_id and inventory_id MUST be numeric (float64 in JSON), not strings.
+		envID, envOk := body["environment_id"].(float64)
+		invID, invOk := body["inventory_id"].(float64)
+		if !envOk || envID != 6 {
+			t.Fatalf("expected environment_id=6 (float64), got %v (type %T)", body["environment_id"], body["environment_id"])
+		}
+		if !invOk || invID != 10 {
+			t.Fatalf("expected inventory_id=10 (float64), got %v (type %T)", body["inventory_id"], body["inventory_id"])
+		}
+		_ = json.NewEncoder(w).Encode(api.Task{ID: 812, TemplateID: 7, Status: "running"})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	tmp := t.TempDir()
+	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
+	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
+
+	oldStdout := os.Stdout
+	rPipe, wPipe, _ := os.Pipe()
+	os.Stdout = wPipe
+
+	root := newTestRoot(nil)
+	root.SetArgs([]string{"task", "run", "deploy-prod", "--host", srv.URL, "--project", "infra", "--environment", "production", "--inventory", "prod-hosts"})
+	err := root.Execute()
+
+	_ = wPipe.Close()
+	os.Stdout = oldStdout
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	data, _ := io.ReadAll(rPipe)
+	out := string(data)
+	if !strings.Contains(out, "Queued task 812") {
+		t.Fatalf("expected task queued message, got: %s", out)
+	}
+}
+
 func TestStopCommand(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {
@@ -189,6 +254,90 @@ func TestLogsCommand(t *testing.T) {
 	out := string(data)
 	if !strings.Contains(out, "hello world") {
 		t.Fatalf("expected log output, got: %s", out)
+	}
+}
+
+func TestLogsFollowDeduplication(t *testing.T) {
+	callCount := 0
+	statusCount := 0
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]api.Project{{ID: 1, Name: "infra"}})
+	})
+	mux.HandleFunc("/api/project/1/tasks", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]api.Task{{ID: 812, TemplateID: 7, Status: "running"}})
+	})
+	mux.HandleFunc("/api/project/1/tasks/812", func(w http.ResponseWriter, r *http.Request) {
+		statusCount++
+		status := "running"
+		if statusCount >= 3 {
+			status = "success"
+		}
+		_ = json.NewEncoder(w).Encode(api.Task{ID: 812, TemplateID: 7, Status: status})
+	})
+	mux.HandleFunc("/api/project/1/tasks/812/output", func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		// Simulate API that returns last N lines with indices resetting (like some paginated APIs).
+		// First call: indices 0,1. Second call: indices 0,1 (same content). Third call: indices 0,1,2.
+		// The current code would handle first->second fine, but let's test the case where
+		// the same content appears with different indices.
+		if callCount == 1 {
+			_ = json.NewEncoder(w).Encode([]api.TaskOutput{
+				{Time: "10:00:00", Output: "line one"},
+				{Time: "10:00:01", Output: "line two"},
+			})
+		} else {
+			_ = json.NewEncoder(w).Encode([]api.TaskOutput{
+				{Time: "10:00:00", Output: "line one"},
+				{Time: "10:00:01", Output: "line two"},
+				{Time: "10:00:02", Output: "line three"},
+			})
+		}
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	tmp := t.TempDir()
+	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
+	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
+
+	oldStdout := os.Stdout
+	rPipe, wPipe, _ := os.Pipe()
+	os.Stdout = wPipe
+
+	root := newTestRoot(nil)
+	root.SetArgs([]string{"task", "logs", "812", "--host", srv.URL, "--project", "infra", "--follow", "--interval", "10ms"})
+
+	// Run with a timeout to avoid hanging if the test breaks.
+	done := make(chan error, 1)
+	go func() { done <- root.Execute() }()
+
+	select {
+	case err := <-done:
+		_ = wPipe.Close()
+		os.Stdout = oldStdout
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		_ = wPipe.Close()
+		os.Stdout = oldStdout
+		t.Fatal("follow logs timed out")
+	}
+
+	data, _ := io.ReadAll(rPipe)
+	out := string(data)
+	// Count occurrences of each line.
+	countOne := strings.Count(out, "line one")
+	countTwo := strings.Count(out, "line two")
+	if countOne > 1 {
+		t.Fatalf("expected line one once, got %d times in output: %s", countOne, out)
+	}
+	if countTwo > 1 {
+		t.Fatalf("expected line two once, got %d times in output: %s", countTwo, out)
+	}
+	if callCount < 2 {
+		t.Fatalf("expected at least 2 API calls, got %d", callCount)
 	}
 }
 

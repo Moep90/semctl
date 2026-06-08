@@ -96,6 +96,18 @@ type Environment struct {
 	JSON      string `json:"json,omitempty"`
 }
 
+// TaskRunRequest is the body sent to launch a task.
+type TaskRunRequest struct {
+	TemplateID    int    `json:"template_id"`
+	Message       string `json:"message,omitempty"`
+	GitBranch     string `json:"git_branch,omitempty"`
+	EnvironmentID int    `json:"environment_id,omitempty"`
+	InventoryID   int    `json:"inventory_id,omitempty"`
+	Limit         string `json:"limit,omitempty"`
+	Diff          bool   `json:"diff,omitempty"`
+	DryRun        bool   `json:"dry_run,omitempty"`
+}
+
 // Keystore is a Semaphore UI access key / keystore entry.
 type Keystore struct {
 	ID        int    `json:"id"`
