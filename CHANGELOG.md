@@ -7,6 +7,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1](https://github.com/Moep90/semctl/compare/v0.2.0...v0.2.1) (2026-06-08)
+
+
+### Bug Fixes
+
+* address bugs [#10](https://github.com/Moep90/semctl/issues/10)-13 — respect flags and output modes ([#17](https://github.com/Moep90/semctl/issues/17)) ([6866385](https://github.com/Moep90/semctl/commit/6866385321a323ecbdffcea78a3d840ba8bd6643))
+* correct action-semantic-pull-request SHA to v5.5.3 ([eab98e8](https://github.com/Moep90/semctl/commit/eab98e82a2ce7c5fb6b3dad59dfc65e92a64de3e))
+* remove skip-github-release so tags are created on merge ([#9](https://github.com/Moep90/semctl/issues/9)) ([96c6d36](https://github.com/Moep90/semctl/commit/96c6d3678c28ff6658fc27b77e89666ff5a1b5c3))
+
 ## [0.2.0](https://github.com/Moep90/semctl/compare/v0.1.0...v0.2.0) (2026-06-08)
 
 
