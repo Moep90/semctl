@@ -82,6 +82,22 @@ func BuildContext(cfg *config.Config, hostFlag, projectFlag, outputFlag, profile
 	if ctx.Debug {
 		ctx.Client = ctx.Client.WithDebug(os.Stderr)
 	}
+	if ctx.Verbose {
+		ctx.Client = ctx.Client.WithVerbose(os.Stderr)
+	}
+
+	if verbose {
+		if profileName != "" {
+			_, _ = fmt.Fprintf(os.Stderr, "[verbose] using profile: %s\n", profileName)
+		}
+		_, _ = fmt.Fprintf(os.Stderr, "[verbose] host: %s\n", ctx.Host)
+		if ctx.Project != "" {
+			_, _ = fmt.Fprintf(os.Stderr, "[verbose] project: %s\n", ctx.Project)
+		}
+		if tokenSource != "" {
+			_, _ = fmt.Fprintf(os.Stderr, "[verbose] auth: %s\n", tokenSource)
+		}
+	}
 
 	// Resolve output mode.
 	modeStr := firstNonEmpty(outputFlag, os.Getenv("SEMAPHORE_OUTPUT"), profileField(profile, func(p *config.Profile) string { return p.DefaultOutput }))

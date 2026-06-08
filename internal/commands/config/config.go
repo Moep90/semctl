@@ -141,18 +141,22 @@ func newProfileListCommand() *cobra.Command {
 		Long:    `Show all configured profiles and mark the active one with an asterisk.`,
 		Example: `  semctl config profile list`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, err := cli.BuildCmdContext(cmd)
+			if err != nil {
+				return err
+			}
 			cfg, err := config.Load()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
+			var out []map[string]any
 			for name := range cfg.Profiles {
-				marker := " "
-				if name == cfg.CurrentProfile {
-					marker = "*"
-				}
-				fmt.Printf("%s %s\n", marker, name)
+				out = append(out, map[string]any{
+					"name":   name,
+					"active": name == cfg.CurrentProfile,
+				})
 			}
-			return nil
+			return ctx.Printer.Print(out)
 		},
 	}
 }

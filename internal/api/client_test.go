@@ -302,6 +302,59 @@ func TestDebugOutput(t *testing.T) {
 	}
 }
 
+func TestDebugOutputRedactsAuthorization(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/ping", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	var buf bytes.Buffer
+	c := NewClient(srv.URL, "super-secret-token").WithDebug(&buf)
+	resp, err := c.Do(context.Background(), "GET", "/ping", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	out := buf.String()
+	if strings.Contains(out, "super-secret-token") {
+		t.Fatalf("Authorization token should be redacted in debug output, got: %s", out)
+	}
+	if !strings.Contains(out, "***REDACTED***") {
+		t.Fatalf("expected ***REDACTED*** in debug output, got: %s", out)
+	}
+}
+
+func TestVerboseOutput(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/ping", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	var buf bytes.Buffer
+	c := NewClient(srv.URL, "tok").WithVerbose(&buf)
+	resp, err := c.Do(context.Background(), "GET", "/ping", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	out := buf.String()
+	if !strings.Contains(out, "[verbose]") {
+		t.Fatalf("expected verbose output, got: %s", out)
+	}
+	if !strings.Contains(out, "request: GET") {
+		t.Fatalf("expected request verbose, got: %s", out)
+	}
+	if !strings.Contains(out, "→ 200") {
+		t.Fatalf("expected response verbose, got: %s", out)
+	}
+}
+
 func TestDecodeJSONError(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/missing", func(w http.ResponseWriter, r *http.Request) {

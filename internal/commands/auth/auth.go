@@ -134,6 +134,9 @@ The host is required and must be an absolute URL (https:// or http://).`,
 				if username == "" {
 					username = strings.TrimSpace(os.Getenv("SEMAPHORE_USERNAME"))
 				}
+				if username == "" && noInteractive {
+					return fmt.Errorf("--username is required when --no-interactive is set")
+				}
 				if username == "" {
 					fmt.Fprint(os.Stderr, "? Username: ")
 					line, err := readLine()
@@ -150,9 +153,12 @@ The host is required and must be an absolute URL (https:// or http://).`,
 				if password == "" {
 					password = strings.TrimSpace(os.Getenv("SEMAPHORE_PASSWORD"))
 				}
+				if password == "" && noInteractive {
+					return fmt.Errorf("--password is required when --no-interactive is set")
+				}
 				if password == "" {
 					fmt.Fprint(os.Stderr, "? Password: ")
-					if !noInteractive && term.IsTerminal(int(os.Stdin.Fd())) {
+					if term.IsTerminal(int(os.Stdin.Fd())) {
 						b, err := term.ReadPassword(int(os.Stdin.Fd()))
 						if err != nil {
 							return fmt.Errorf("read password: %w", err)
