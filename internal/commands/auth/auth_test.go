@@ -16,6 +16,7 @@ package auth
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -94,7 +95,7 @@ func TestCookieLoginFailure(t *testing.T) {
 
 	root := newTestRoot(nil)
 	root.AddCommand(NewAuthCommand())
-	root.SetArgs([]string{"auth", "login", srv.URL, "--cookie"})
+	root.SetArgs([]string{"auth", "login", srv.URL, "--cookie", "--plaintext"})
 	err := root.Execute()
 
 	os.Stdin = oldStdin
@@ -153,6 +154,152 @@ func TestCookieLoginNoInteractive(t *testing.T) {
 	stderrData, _ := io.ReadAll(stderrR)
 	if !strings.Contains(string(stderrData), "Username") {
 		t.Fatalf("expected username prompt on stderr")
+	}
+}
+
+func TestCookieLoginWithFlags(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/auth/login", func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		if req["auth"] != "admin" || req["password"] != "changeme" {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":"invalid credentials"}`))
+			return
+		}
+		http.SetCookie(w, &http.Cookie{Name: "semaphore", Value: "session123"})
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
+	})
+	mux.HandleFunc("/api/user", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": 1, "name": "Admin", "username": "admin"})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	tmp := t.TempDir()
+	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
+	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
+
+	oldStdout := os.Stdout
+	rPipe, wPipe, _ := os.Pipe()
+	os.Stdout = wPipe
+
+	root := newTestRoot(nil)
+	root.AddCommand(NewAuthCommand())
+	root.SetArgs([]string{"auth", "login", srv.URL, "--cookie", "--username", "admin", "--password", "changeme", "--plaintext"})
+	err := root.Execute()
+
+	_ = wPipe.Close()
+	os.Stdout = oldStdout
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	data, _ := io.ReadAll(rPipe)
+	if !strings.Contains(string(data), "Authenticated as admin") {
+		t.Fatalf("expected success message, got: %s", string(data))
+	}
+}
+
+func TestCookieLoginEnvVars(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/auth/login", func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		if req["auth"] != "envuser" || req["password"] != "envpass" {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":"invalid credentials"}`))
+			return
+		}
+		http.SetCookie(w, &http.Cookie{Name: "semaphore", Value: "session456"})
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
+	})
+	mux.HandleFunc("/api/user", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": 2, "name": "EnvUser", "username": "envuser"})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	tmp := t.TempDir()
+	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
+	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
+
+	_ = os.Setenv("SEMAPHORE_USERNAME", "envuser")
+	defer func() { _ = os.Unsetenv("SEMAPHORE_USERNAME") }()
+	_ = os.Setenv("SEMAPHORE_PASSWORD", "envpass")
+	defer func() { _ = os.Unsetenv("SEMAPHORE_PASSWORD") }()
+
+	oldStdout := os.Stdout
+	rPipe, wPipe, _ := os.Pipe()
+	os.Stdout = wPipe
+
+	root := newTestRoot(nil)
+	root.AddCommand(NewAuthCommand())
+	root.SetArgs([]string{"auth", "login", srv.URL, "--cookie", "--plaintext"})
+	err := root.Execute()
+
+	_ = wPipe.Close()
+	os.Stdout = oldStdout
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	data, _ := io.ReadAll(rPipe)
+	if !strings.Contains(string(data), "Authenticated as envuser") {
+		t.Fatalf("expected success message, got: %s", string(data))
+	}
+}
+
+func TestCookieLoginFlagsOverrideEnvVars(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/auth/login", func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		// Should use flags, not env vars
+		if req["auth"] != "flaguser" || req["password"] != "flagpass" {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":"invalid credentials"}`))
+			return
+		}
+		http.SetCookie(w, &http.Cookie{Name: "semaphore", Value: "session789"})
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
+	})
+	mux.HandleFunc("/api/user", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": 3, "name": "FlagUser", "username": "flaguser"})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	tmp := t.TempDir()
+	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
+	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
+
+	_ = os.Setenv("SEMAPHORE_USERNAME", "envuser")
+	defer func() { _ = os.Unsetenv("SEMAPHORE_USERNAME") }()
+	_ = os.Setenv("SEMAPHORE_PASSWORD", "envpass")
+	defer func() { _ = os.Unsetenv("SEMAPHORE_PASSWORD") }()
+
+	oldStdout := os.Stdout
+	rPipe, wPipe, _ := os.Pipe()
+	os.Stdout = wPipe
+
+	root := newTestRoot(nil)
+	root.AddCommand(NewAuthCommand())
+	root.SetArgs([]string{"auth", "login", srv.URL, "--cookie", "--username", "flaguser", "--password", "flagpass", "--plaintext"})
+	err := root.Execute()
+
+	_ = wPipe.Close()
+	os.Stdout = oldStdout
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	data, _ := io.ReadAll(rPipe)
+	if !strings.Contains(string(data), "Authenticated as flaguser") {
+		t.Fatalf("expected success message, got: %s", string(data))
 	}
 }
 
