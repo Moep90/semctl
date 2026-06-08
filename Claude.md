@@ -792,3 +792,26 @@ Security-specific patterns established in this codebase:
 - **ANSI sanitization:** Strip CSI, OSC, and control sequences from user-generated output before printing to TTY. Default `--escape-sanitize=true` in `task logs`. Use `regexp` covering `\x1b\[[0-9;]*[A-Za-z]`, `\x1b\]…\x07`, and related sequences.
 - **Header forwarding:** When `semctl api` accepts `--header` flags, forward them through `DoWithHeaders(http.Header)` so they actually reach the wire. Do not build a dummy request.
 - **Secret redaction:** Never include `Authorization`, `Cookie`, `token`, `password`, or `secret` values in error messages, debug logs, or test output.
+
+## Development workflow
+
+All feature and fix work must follow an issue-first, branch-and-merge workflow. Do not commit directly to `main`.
+
+1. **Open an issue** describing the bug, feature, or improvement before starting work.
+2. **Create a branch** from `main` with a conventional prefix:
+   - `feat/<short-description>` — new features
+   - `fix/<short-description>` — bug fixes
+   - `docs/<short-description>` — documentation changes
+   - `chore/<short-description>` — tooling, dependencies, CI
+3. **Make changes** with clear, focused commits following Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`).
+4. **Run checks locally** before pushing:
+   ```bash
+   go fmt ./...
+   golangci-lint run ./...
+   go test -race -count=1 ./...
+   govulncheck ./...
+   ```
+5. **Push** the branch and open a **Pull Request** against `main`.
+6. **Reference the issue** in the PR description (e.g., `Closes #123`).
+7. **Ensure CI passes** before requesting review.
+8. **Merge** only after maintainer approval.
