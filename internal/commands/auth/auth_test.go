@@ -112,8 +112,19 @@ func TestCookieLoginFailure(t *testing.T) {
 func TestCookieLoginNoInteractive(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/auth/login", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusUnauthorized)
-		_, _ = w.Write([]byte(`{"error":"invalid credentials"}`))
+		var req map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		if req["auth"] != "admin" || req["password"] != "badpass" {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":"invalid credentials"}`))
+			return
+		}
+		http.SetCookie(w, &http.Cookie{Name: "semaphore", Value: "session123"})
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
+	})
+	mux.HandleFunc("/api/user", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": 1, "name": "Admin", "username": "admin"})
 	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
@@ -122,38 +133,24 @@ func TestCookieLoginNoInteractive(t *testing.T) {
 	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
 	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
 
-	// Pipe username and password to stdin.
-	oldStdin := os.Stdin
-	oldStderr := os.Stderr
-	stdinR, stdinW, _ := os.Pipe()
-	stderrR, stderrW, _ := os.Pipe()
-	os.Stdin = stdinR
-	os.Stderr = stderrW
-	go func() {
-		_, _ = io.WriteString(stdinW, "admin\n")
-		_, _ = io.WriteString(stdinW, "badpass\n")
-		_ = stdinW.Close()
-	}()
+	oldStdout := os.Stdout
+	rPipe, wPipe, _ := os.Pipe()
+	os.Stdout = wPipe
 
 	root := newTestRoot(nil)
 	root.AddCommand(NewAuthCommand())
-	root.SetArgs([]string{"auth", "login", srv.URL, "--cookie", "--no-interactive"})
+	root.SetArgs([]string{"auth", "login", srv.URL, "--cookie", "--no-interactive", "--username", "admin", "--password", "badpass", "--plaintext"})
 	err := root.Execute()
 
-	os.Stdin = oldStdin
-	os.Stderr = oldStderr
-	_ = stderrW.Close()
+	_ = wPipe.Close()
+	os.Stdout = oldStdout
 
-	if err == nil {
-		t.Fatal("expected error for failed cookie login")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(err.Error(), "401") {
-		t.Fatalf("expected 401 in error, got: %v", err)
-	}
-	// Verify prompts were written to stderr
-	stderrData, _ := io.ReadAll(stderrR)
-	if !strings.Contains(string(stderrData), "Username") {
-		t.Fatalf("expected username prompt on stderr")
+	data, _ := io.ReadAll(rPipe)
+	if !strings.Contains(string(data), "Authenticated as admin") {
+		t.Fatalf("expected success message, got: %s", string(data))
 	}
 }
 
@@ -300,6 +297,54 @@ func TestCookieLoginFlagsOverrideEnvVars(t *testing.T) {
 	data, _ := io.ReadAll(rPipe)
 	if !strings.Contains(string(data), "Authenticated as flaguser") {
 		t.Fatalf("expected success message, got: %s", string(data))
+	}
+}
+
+func TestCookieLoginNoInteractiveMissingPassword(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/auth/login", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	tmp := t.TempDir()
+	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
+	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
+
+	root := newTestRoot(nil)
+	root.AddCommand(NewAuthCommand())
+	root.SetArgs([]string{"auth", "login", srv.URL, "--cookie", "--username", "admin", "--no-interactive"})
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("expected error when --password is missing with --no-interactive")
+	}
+	if !strings.Contains(err.Error(), "password") {
+		t.Fatalf("expected error about missing password, got: %v", err)
+	}
+}
+
+func TestCookieLoginNoInteractiveMissingUsername(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/auth/login", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	tmp := t.TempDir()
+	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
+	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
+
+	root := newTestRoot(nil)
+	root.AddCommand(NewAuthCommand())
+	root.SetArgs([]string{"auth", "login", srv.URL, "--cookie", "--password", "changeme", "--no-interactive"})
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("expected error when --username is missing with --no-interactive")
+	}
+	if !strings.Contains(err.Error(), "username") {
+		t.Fatalf("expected error about missing username, got: %v", err)
 	}
 }
 

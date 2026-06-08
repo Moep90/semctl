@@ -15,8 +15,47 @@
 package cli
 
 import (
+	"bytes"
+	"os"
+	"strings"
 	"testing"
+
+	"github.com/moep90/semaphore-cli/internal/config"
 )
+
+func TestBuildContextVerbose(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.CurrentProfile = "prod"
+	cfg.Profiles["prod"] = &config.Profile{
+		Host:    "https://semaphore.example.com",
+		Project: "infra",
+	}
+
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	ctx, err := BuildContext(cfg, "", "", "", "", false, true, false)
+
+	_ = w.Close()
+	os.Stderr = oldStderr
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ctx == nil {
+		t.Fatal("expected non-nil context")
+	}
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	out := buf.String()
+	if !strings.Contains(out, "[verbose]") {
+		t.Fatalf("expected verbose output on stderr, got: %s", out)
+	}
+	if !strings.Contains(out, "host:") {
+		t.Fatalf("expected host in verbose output, got: %s", out)
+	}
+}
 
 func TestValidateHost(t *testing.T) {
 	for _, tt := range []struct {

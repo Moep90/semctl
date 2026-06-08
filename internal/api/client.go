@@ -37,6 +37,8 @@ type Client struct {
 	backoff     []time.Duration
 	debug       bool
 	debugOut    io.Writer
+	verbose     bool
+	verboseOut  io.Writer
 }
 
 // NewClient creates a new API client.
@@ -84,6 +86,19 @@ func (c *Client) debugf(format string, args ...any) {
 	}
 }
 
+// WithVerbose enables verbose logging to the given writer.
+func (c *Client) WithVerbose(w io.Writer) *Client {
+	c.verbose = true
+	c.verboseOut = w
+	return c
+}
+
+func (c *Client) verbosef(format string, args ...any) {
+	if c.verbose && c.verboseOut != nil {
+		_, _ = fmt.Fprintf(c.verboseOut, "[verbose] "+format+"\n", args...)
+	}
+}
+
 // Do performs an HTTP request against the API.
 func (c *Client) Do(ctx context.Context, method, path string, body any) (*http.Response, error) {
 	return c.DoWithHeaders(ctx, method, path, body, nil)
@@ -111,6 +126,7 @@ func (c *Client) DoWithHeaders(ctx context.Context, method, path string, body an
 		if err != nil {
 			lastErr = err
 			c.debugf("request error: %v", err)
+			c.verbosef("request failed: %v", err)
 			if !isRetryableError(err) {
 				return nil, err
 			}
@@ -118,9 +134,11 @@ func (c *Client) DoWithHeaders(ctx context.Context, method, path string, body an
 		}
 
 		c.debugf("response status: %d", resp.StatusCode)
+		c.verbosef("response: %s %s → %d", method, path, resp.StatusCode)
 		if !isRetryableStatus(resp.StatusCode) {
 			return resp, nil
 		}
+		c.verbosef("retrying %s %s (status %d)", method, path, resp.StatusCode)
 
 		// Drain and close body before retry to allow connection reuse.
 		_, _ = io.Copy(io.Discard, resp.Body)
@@ -143,6 +161,7 @@ func (c *Client) doOnce(ctx context.Context, method, path string, body any, extr
 		return nil, fmt.Errorf("build url: %w", err)
 	}
 	u += query
+	c.verbosef("request: %s %s", method, u)
 
 	var bodyReader io.Reader
 	if body != nil {
@@ -175,7 +194,7 @@ func (c *Client) doOnce(ctx context.Context, method, path string, body any, extr
 			req.Header.Add(k, v)
 		}
 	}
-	c.debugf("request %s %s headers=%v", method, u, req.Header)
+	c.debugf("request %s %s headers=%v", method, u, redactHeaders(req.Header))
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -183,6 +202,19 @@ func (c *Client) doOnce(ctx context.Context, method, path string, body any, extr
 	}
 
 	return resp, nil
+}
+
+func redactHeaders(h http.Header) http.Header {
+	safe := make(http.Header, len(h))
+	for k, vv := range h {
+		lower := strings.ToLower(k)
+		if lower == "authorization" || lower == "cookie" {
+			safe[k] = []string{"***REDACTED***"}
+		} else {
+			safe[k] = vv
+		}
+	}
+	return safe
 }
 
 func isRetryableError(err error) bool {

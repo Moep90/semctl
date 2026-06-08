@@ -111,6 +111,41 @@ func TestConfigList(t *testing.T) {
 	}
 }
 
+func TestProfileListJSON(t *testing.T) {
+	tmp := t.TempDir()
+	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
+	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
+
+	cfg := cfgpkg.DefaultConfig()
+	cfg.CurrentProfile = "prod"
+	cfg.Profiles["prod"] = &cfgpkg.Profile{Host: "https://semaphore.example.com"}
+	cfg.Profiles["dev"] = &cfgpkg.Profile{Host: "https://dev.example.com"}
+	_ = cfgpkg.Save(cfg)
+
+	var buf bytes.Buffer
+	root := newTestRoot(&buf)
+	root.SetArgs([]string{"config", "profile", "list", "--output", "json"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var out []map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &out); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if len(out) != 2 {
+		t.Fatalf("expected 2 profiles, got %d", len(out))
+	}
+	foundActive := false
+	for _, p := range out {
+		if p["active"] == true {
+			foundActive = true
+		}
+	}
+	if !foundActive {
+		t.Fatalf("expected one active profile, got: %v", out)
+	}
+}
+
 func TestProfileCreate(t *testing.T) {
 	tmp := t.TempDir()
 	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
