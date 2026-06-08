@@ -7,6 +7,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0](https://github.com/Moep90/semctl/compare/v0.1.0...v0.2.0) (2026-06-08)
+
+
+### Features
+
+* add automated release and PR title validation ([#7](https://github.com/Moep90/semctl/issues/7)) ([ae3bbbd](https://github.com/Moep90/semctl/commit/ae3bbbdbe40a11b777d33193e4f4bba7d1371ae0))
+
+
+### Bug Fixes
+
+* address 8 bugs from user review ([4d8f47b](https://github.com/Moep90/semctl/commit/4d8f47b0704b51727d016813f6fb6cc7bebbe75c))
+* gofmt alignment in task.go stop command ([d4e11cb](https://github.com/Moep90/semctl/commit/d4e11cb028edded5b6217bbca2a6efd62f51eb02))
+
 ## [Unreleased]
 
 ### Added
