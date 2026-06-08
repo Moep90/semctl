@@ -23,9 +23,11 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 
 	semapi "github.com/moep90/semaphore-cli/internal/api"
 	"github.com/moep90/semaphore-cli/internal/cli"
+	"github.com/moep90/semaphore-cli/internal/output"
 )
 
 // NewAPICommand builds the api escape hatch command.
@@ -127,9 +129,16 @@ This is the escape hatch for endpoints not yet covered by first-class commands.`
 			// Pretty-print JSON if possible.
 			var pretty any
 			if err := json.Unmarshal(data, &pretty); err == nil {
+				if ctx.Printer.Mode == output.ModeYAML {
+					return yaml.NewEncoder(ctx.Printer.Stdout).Encode(pretty)
+				}
 				enc := json.NewEncoder(ctx.Printer.Stdout)
 				enc.SetIndent("", "  ")
 				return enc.Encode(pretty)
+			}
+
+			if ctx.Printer.Mode == output.ModeJSON || ctx.Printer.Mode == output.ModeYAML {
+				return ctx.Printer.Print(map[string]string{"message": string(data)})
 			}
 
 			_, _ = ctx.Printer.Stdout.Write(data)

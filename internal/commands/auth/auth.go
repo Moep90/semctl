@@ -205,6 +205,9 @@ func newLogoutCommand() *cobra.Command {
 				host = args[0]
 			}
 			if host == "" {
+				host, _ = cmd.Flags().GetString("host")
+			}
+			if host == "" {
 				host = os.Getenv("SEMAPHORE_HOST")
 			}
 			if host == "" {

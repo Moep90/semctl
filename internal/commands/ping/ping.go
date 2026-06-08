@@ -21,6 +21,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/moep90/semaphore-cli/internal/cli"
+	"github.com/moep90/semaphore-cli/internal/output"
 )
 
 // NewPingCommand builds the ping command.
@@ -43,6 +44,9 @@ func NewPingCommand() *cobra.Command {
 			}
 			defer func() { _ = resp.Body.Close() }()
 			if resp.StatusCode == http.StatusOK {
+				if ctx.Printer.Mode == output.ModeJSON || ctx.Printer.Mode == output.ModeYAML {
+					return ctx.Printer.Print(map[string]string{"message": "Semaphore UI is reachable"})
+				}
 				_, _ = fmt.Fprintln(ctx.Printer.Stdout, "✓ Semaphore UI is reachable")
 				return nil
 			}

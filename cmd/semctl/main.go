@@ -15,10 +15,12 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 
 	"github.com/moep90/semaphore-cli/internal/commands/api"
 	"github.com/moep90/semaphore-cli/internal/commands/auth"
@@ -83,7 +85,13 @@ property of their respective owners.`,
 	root.AddCommand(ping.NewPingCommand())
 
 	if err := root.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		if jsonFlag {
+			_ = json.NewEncoder(os.Stderr).Encode(map[string]string{"error": err.Error()})
+		} else if outputFlag == "yaml" {
+			_ = yaml.NewEncoder(os.Stderr).Encode(map[string]string{"error": err.Error()})
+		} else {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		}
 		os.Exit(1)
 	}
 }
