@@ -37,11 +37,7 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
-
-      - name: Checkout release tag
-        run: |
-          git fetch --tags --force origin
-          git checkout "${{ inputs.tag || github.ref_name }}" -b release-branch
+          ref: ${{ inputs.tag || github.ref_name }}
 
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.3.0
         with:
@@ -55,17 +51,17 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Re-checkout release tag
+        run: |
+          git fetch --tags --force origin
+          git checkout "${{ inputs.tag || github.ref_name }}" -b release-branch
+
       - uses: sigstore/cosign-installer@f713795cb21599bc4e5c4b58cbad1da852d7eeb9 # v3.8.1
         with:
           cosign-release: v2.4.1
 
       - name: Install Syft
         uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.19.0
-
-      - name: Re-checkout release tag
-        run: |
-          git fetch --tags --force origin
-          git checkout "${{ inputs.tag || github.ref_name }}" -b release-branch
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6.3.0
