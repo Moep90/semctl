@@ -218,11 +218,11 @@ a status-specific exit code suitable for CI pipelines:
 
 func newStopCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "stop <TASK>",
-		Short: "Stop a running task",
-		Long:  `Request that a running or pending task be stopped. Accepts a task ID.`,
+		Use:     "stop <TASK>",
+		Short:   "Stop a running task",
+		Long:    `Request that a running or pending task be stopped. Accepts a task ID.`,
 		Example: `  semctl task stop 812`,
-		Args: cobra.ExactArgs(1),
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, err := cli.BuildCmdContext(cmd)
 			if err != nil {
