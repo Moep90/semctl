@@ -72,6 +72,8 @@ func newLoginCommand() *cobra.Command {
 	var withToken bool
 	var plaintext bool
 	var cookie bool
+	var usernameFlag string
+	var passwordFlag string
 	cmd := &cobra.Command{
 		Use:   "login [HOST]",
 		Short: "Authenticate to a Semaphore UI instance",
@@ -88,7 +90,8 @@ The host is required and must be an absolute URL (https:// or http://).`,
 		Example: `  semctl auth login https://semaphore.example.com
   echo "$TOKEN" | semctl auth login https://semaphore.example.com --with-token
   SEMAPHORE_HOST=https://semaphore.example.com semctl auth login --with-token
-  semctl auth login https://semaphore.example.com --cookie`,
+  semctl auth login https://semaphore.example.com --cookie
+  semctl auth login https://semaphore.example.com --cookie --username admin --password changeme`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// login is special: it doesn't need an existing host.
@@ -116,35 +119,53 @@ The host is required and must be an absolute URL (https:// or http://).`,
 			var tokenSource string
 			if cookie {
 				tokenSource = "cookie"
-				// Prompt for username and password.
 				noInteractive, _ := cmd.Flags().GetBool("no-interactive")
 
-				fmt.Fprint(os.Stderr, "? Username: ")
-				reader := bufio.NewReader(os.Stdin)
-				username, err := reader.ReadString('\n')
-				if err != nil {
-					return fmt.Errorf("read username: %w", err)
+				// Resolve username and password with precedence: flags > env vars > stdin prompt.
+				var stdinReader *bufio.Reader
+				readLine := func() (string, error) {
+					if stdinReader == nil {
+						stdinReader = bufio.NewReader(os.Stdin)
+					}
+					return stdinReader.ReadString('\n')
 				}
-				username = strings.TrimSpace(username)
+
+				username := strings.TrimSpace(usernameFlag)
+				if username == "" {
+					username = strings.TrimSpace(os.Getenv("SEMAPHORE_USERNAME"))
+				}
+				if username == "" {
+					fmt.Fprint(os.Stderr, "? Username: ")
+					line, err := readLine()
+					if err != nil {
+						return fmt.Errorf("read username: %w", err)
+					}
+					username = strings.TrimSpace(line)
+				}
 				if username == "" {
 					return fmt.Errorf("username is required")
 				}
 
-				fmt.Fprint(os.Stderr, "? Password: ")
-				var password string
-				if !noInteractive && term.IsTerminal(int(os.Stdin.Fd())) {
-					b, err := term.ReadPassword(int(os.Stdin.Fd()))
-					if err != nil {
-						return fmt.Errorf("read password: %w", err)
+				password := strings.TrimSpace(passwordFlag)
+				if password == "" {
+					password = strings.TrimSpace(os.Getenv("SEMAPHORE_PASSWORD"))
+				}
+				if password == "" {
+					fmt.Fprint(os.Stderr, "? Password: ")
+					if !noInteractive && term.IsTerminal(int(os.Stdin.Fd())) {
+						b, err := term.ReadPassword(int(os.Stdin.Fd()))
+						if err != nil {
+							return fmt.Errorf("read password: %w", err)
+						}
+						password = strings.TrimSpace(string(b))
+						_, _ = fmt.Fprintln(os.Stderr)
+					} else {
+						line, err := readLine()
+						if err != nil {
+							return fmt.Errorf("read password: %w", err)
+						}
+						password = strings.TrimSpace(line)
 					}
-					password = strings.TrimSpace(string(b))
-					_, _ = fmt.Fprintln(os.Stderr)
-				} else {
-					line, err := reader.ReadString('\n')
-					if err != nil {
-						return fmt.Errorf("read password: %w", err)
-					}
-					password = strings.TrimSpace(line)
 				}
 				if password == "" {
 					return fmt.Errorf("password is required")
@@ -267,6 +288,8 @@ The host is required and must be an absolute URL (https:// or http://).`,
 	cmd.Flags().BoolVar(&withToken, "with-token", false, "Read token from stdin")
 	cmd.Flags().BoolVar(&plaintext, "plaintext", false, "Allow storing token in config file if keyring is unavailable")
 	cmd.Flags().BoolVar(&cookie, "cookie", false, "Authenticate with username/password cookie session")
+	cmd.Flags().StringVar(&usernameFlag, "username", "", "Username for cookie authentication (also SEMAPHORE_USERNAME env)")
+	cmd.Flags().StringVar(&passwordFlag, "password", "", "Password for cookie authentication (also SEMAPHORE_PASSWORD env)")
 	return cmd
 }
 
