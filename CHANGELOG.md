@@ -7,6 +7,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0](https://github.com/Moep90/semctl/compare/v0.3.0...v0.4.0) (2026-06-08)
+
+
+### Features
+
+* add --username and --password flags to auth login --cookie ([#33](https://github.com/Moep90/semctl/issues/33)) ([c9c99e6](https://github.com/Moep90/semctl/commit/c9c99e6cd8cb10a5f84b37852fdbb4f3cbd10047))
+
+
+### Bug Fixes
+
+* address medium-priority edge cases and add missing tests ([dc74126](https://github.com/Moep90/semctl/commit/dc7412651e8007adb6435034cf2a3a1114014048))
+* resolve 8 open bugs ([#32](https://github.com/Moep90/semctl/issues/32)) ([bf2fad6](https://github.com/Moep90/semctl/commit/bf2fad6e3e5f37fb4771872c89184837ca04f397))
+* resolve 8 open bugs from GitHub issues ([bf2fad6](https://github.com/Moep90/semctl/commit/bf2fad6e3e5f37fb4771872c89184837ca04f397))
+* thorough review and TDD improvements ([#30](https://github.com/Moep90/semctl/issues/30)) ([dc74126](https://github.com/Moep90/semctl/commit/dc7412651e8007adb6435034cf2a3a1114014048))
+
 ## [0.3.0](https://github.com/Moep90/semctl/compare/v0.2.1...v0.3.0) (2026-06-08)
 
 
