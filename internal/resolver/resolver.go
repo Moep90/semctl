@@ -132,6 +132,69 @@ func resolveByName[T any](idOrName string, items []T, extract func(T) (int, stri
 	return 0, fmt.Errorf("not found: %s", idOrName)
 }
 
+// ResolveInventory resolves an inventory identifier to an inventory ID within a project.
+func ResolveInventory(ctx context.Context, client *api.Client, projectID int, idOrName string) (int, error) {
+	if id, err := strconv.Atoi(idOrName); err == nil {
+		return id, nil
+	}
+
+	path := fmt.Sprintf("/project/%d/inventory", projectID)
+	var inventories []api.Inventory
+	resp, err := client.Do(ctx, "GET", path, nil)
+	if err != nil {
+		return 0, fmt.Errorf("list inventory: %w", err)
+	}
+	if err := api.DecodeJSON(resp, &inventories); err != nil {
+		return 0, fmt.Errorf("decode inventory: %w", err)
+	}
+
+	return resolveByName(idOrName, inventories, func(i api.Inventory) (int, string) {
+		return i.ID, i.Name
+	})
+}
+
+// ResolveEnvironment resolves an environment identifier to an environment ID within a project.
+func ResolveEnvironment(ctx context.Context, client *api.Client, projectID int, idOrName string) (int, error) {
+	if id, err := strconv.Atoi(idOrName); err == nil {
+		return id, nil
+	}
+
+	path := fmt.Sprintf("/project/%d/environment", projectID)
+	var environments []api.Environment
+	resp, err := client.Do(ctx, "GET", path, nil)
+	if err != nil {
+		return 0, fmt.Errorf("list environment: %w", err)
+	}
+	if err := api.DecodeJSON(resp, &environments); err != nil {
+		return 0, fmt.Errorf("decode environment: %w", err)
+	}
+
+	return resolveByName(idOrName, environments, func(e api.Environment) (int, string) {
+		return e.ID, e.Name
+	})
+}
+
+// ResolveKeystore resolves a keystore identifier to a keystore ID within a project.
+func ResolveKeystore(ctx context.Context, client *api.Client, projectID int, idOrName string) (int, error) {
+	if id, err := strconv.Atoi(idOrName); err == nil {
+		return id, nil
+	}
+
+	path := fmt.Sprintf("/project/%d/keys", projectID)
+	var keystores []api.Keystore
+	resp, err := client.Do(ctx, "GET", path, nil)
+	if err != nil {
+		return 0, fmt.Errorf("list keystore: %w", err)
+	}
+	if err := api.DecodeJSON(resp, &keystores); err != nil {
+		return 0, fmt.Errorf("decode keystore: %w", err)
+	}
+
+	return resolveByName(idOrName, keystores, func(k api.Keystore) (int, string) {
+		return k.ID, k.Name
+	})
+}
+
 func ambiguousError[T any](idOrName string, items []T, extract func(T) (int, string)) error {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "name is ambiguous: %s\n\nMatches:\n", idOrName)

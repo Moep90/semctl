@@ -16,8 +16,11 @@ package auth
 
 import (
 	"bufio"
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"net/url"
 	"os"
 	"strings"
@@ -68,19 +71,24 @@ func validateHost(host string) error {
 func newLoginCommand() *cobra.Command {
 	var withToken bool
 	var plaintext bool
+	var cookie bool
 	cmd := &cobra.Command{
 		Use:   "login [HOST]",
 		Short: "Authenticate to a Semaphore UI instance",
-		Long: `Log in to a Semaphore UI server with an API token.
+		Long: `Log in to a Semaphore UI server with an API token or username/password.
 
 Interactive mode prompts for a token with hidden input. Use --with-token to pipe
 a token from stdin (e.g., from a password manager). Tokens are stored in the OS
 keyring when possible; use --plaintext only if the keyring is unavailable.
 
+Use --cookie to authenticate with username/password instead of an API token.
+This stores a session cookie for subsequent requests.
+
 The host is required and must be an absolute URL (https:// or http://).`,
 		Example: `  semctl auth login https://semaphore.example.com
   echo "$TOKEN" | semctl auth login https://semaphore.example.com --with-token
-  SEMAPHORE_HOST=https://semaphore.example.com semctl auth login --with-token`,
+  SEMAPHORE_HOST=https://semaphore.example.com semctl auth login --with-token
+  semctl auth login https://semaphore.example.com --cookie`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// login is special: it doesn't need an existing host.
@@ -105,39 +113,106 @@ The host is required and must be an absolute URL (https:// or http://).`,
 			}
 
 			var token string
-			if withToken {
-				data, err := io.ReadAll(os.Stdin)
+			var tokenSource string
+			if cookie {
+				tokenSource = "cookie"
+				// Prompt for username and password.
+				fmt.Fprint(os.Stderr, "? Username: ")
+				reader := bufio.NewReader(os.Stdin)
+				username, err := reader.ReadString('\n')
 				if err != nil {
-					return fmt.Errorf("read token from stdin: %w", err)
+					return fmt.Errorf("read username: %w", err)
 				}
-				token = strings.TrimSpace(string(data))
-			} else {
-				fmt.Fprint(os.Stderr, "? Token: ")
+				username = strings.TrimSpace(username)
+				if username == "" {
+					return fmt.Errorf("username is required")
+				}
+
+				fmt.Fprint(os.Stderr, "? Password: ")
+				var password string
 				if term.IsTerminal(int(os.Stdin.Fd())) {
 					b, err := term.ReadPassword(int(os.Stdin.Fd()))
 					if err != nil {
-						return fmt.Errorf("read token: %w", err)
+						return fmt.Errorf("read password: %w", err)
 					}
-					token = strings.TrimSpace(string(b))
+					password = strings.TrimSpace(string(b))
 					_, _ = fmt.Fprintln(os.Stderr)
 				} else {
-					reader := bufio.NewReader(os.Stdin)
 					line, err := reader.ReadString('\n')
 					if err != nil {
-						return fmt.Errorf("read token: %w", err)
+						return fmt.Errorf("read password: %w", err)
 					}
-					token = strings.TrimSpace(line)
+					password = strings.TrimSpace(line)
 				}
-			}
+				if password == "" {
+					return fmt.Errorf("password is required")
+				}
 
-			if token == "" {
-				return fmt.Errorf("token is required")
-			}
+				// POST /api/auth/login
+				loginBody, _ := json.Marshal(api.AuthLoginRequest{Auth: username, Password: password})
+				resp, err := http.Post(host+"/api/auth/login", "application/json", bytes.NewReader(loginBody))
+				if err != nil {
+					return fmt.Errorf("cookie login request failed: %w", err)
+				}
+				defer func() { _ = resp.Body.Close() }()
+				if resp.StatusCode >= 400 {
+					body, _ := io.ReadAll(resp.Body)
+					return fmt.Errorf("cookie login failed (%d): %s", resp.StatusCode, string(body))
+				}
+				// Extract session cookie.
+				for _, c := range resp.Cookies() {
+					if c.Name == "semaphore" {
+						token = c.Value
+						break
+					}
+				}
+				if token == "" {
+					return fmt.Errorf("no session cookie received from login endpoint")
+				}
+				// Verify with a lightweight request.
+				client := api.NewClientWithSource(host, token, tokenSource)
+				user, err := auth.Login(cmd.Context(), client)
+				if err != nil {
+					return fmt.Errorf("login failed: %w", err)
+				}
+				_, _ = fmt.Fprintf(os.Stdout, "✓ Authenticated as %s\n", user.Username)
+			} else {
+				tokenSource = "bearer"
+				if withToken {
+					data, err := io.ReadAll(os.Stdin)
+					if err != nil {
+						return fmt.Errorf("read token from stdin: %w", err)
+					}
+					token = strings.TrimSpace(string(data))
+				} else {
+					fmt.Fprint(os.Stderr, "? Token: ")
+					if term.IsTerminal(int(os.Stdin.Fd())) {
+						b, err := term.ReadPassword(int(os.Stdin.Fd()))
+						if err != nil {
+							return fmt.Errorf("read token: %w", err)
+						}
+						token = strings.TrimSpace(string(b))
+						_, _ = fmt.Fprintln(os.Stderr)
+					} else {
+						reader := bufio.NewReader(os.Stdin)
+						line, err := reader.ReadString('\n')
+						if err != nil {
+							return fmt.Errorf("read token: %w", err)
+						}
+						token = strings.TrimSpace(line)
+					}
+				}
 
-			client := api.NewClient(host, token)
-			user, err := auth.Login(cmd.Context(), client)
-			if err != nil {
-				return fmt.Errorf("login failed: %w", err)
+				if token == "" {
+					return fmt.Errorf("token is required")
+				}
+
+				client := api.NewClient(host, token)
+				user, err := auth.Login(cmd.Context(), client)
+				if err != nil {
+					return fmt.Errorf("login failed: %w", err)
+				}
+				_, _ = fmt.Fprintf(os.Stdout, "✓ Authenticated as %s\n", user.Username)
 			}
 
 			if err := auth.Store(host, token); err != nil {
@@ -160,6 +235,7 @@ The host is required and must be an absolute URL (https:// or http://).`,
 				}
 				cfg.Profiles[profileName].Host = host
 				cfg.Profiles[profileName].Token = token
+				cfg.Profiles[profileName].TokenSource = tokenSource
 				if err := config.Save(cfg); err != nil {
 					return fmt.Errorf("save config: %w", err)
 				}
@@ -178,16 +254,17 @@ The host is required and must be an absolute URL (https:// or http://).`,
 					cfg.Profiles[profileName] = &config.Profile{}
 				}
 				cfg.Profiles[profileName].Host = host
+				cfg.Profiles[profileName].TokenSource = tokenSource
 				_ = config.Save(cfg)
 			}
 
-			_, _ = fmt.Fprintf(os.Stdout, "✓ Authenticated as %s\n", user.Username)
 			_, _ = fmt.Fprintf(os.Stdout, "✓ Stored credentials for %s\n", host)
 			return nil
 		},
 	}
 	cmd.Flags().BoolVar(&withToken, "with-token", false, "Read token from stdin")
 	cmd.Flags().BoolVar(&plaintext, "plaintext", false, "Allow storing token in config file if keyring is unavailable")
+	cmd.Flags().BoolVar(&cookie, "cookie", false, "Authenticate with username/password cookie session")
 	return cmd
 }
 

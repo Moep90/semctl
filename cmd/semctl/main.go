@@ -25,7 +25,10 @@ import (
 	"github.com/moep90/semaphore-cli/internal/commands/api"
 	"github.com/moep90/semaphore-cli/internal/commands/auth"
 	"github.com/moep90/semaphore-cli/internal/commands/config"
+	"github.com/moep90/semaphore-cli/internal/commands/environment"
 	"github.com/moep90/semaphore-cli/internal/commands/info"
+	"github.com/moep90/semaphore-cli/internal/commands/inventory"
+	"github.com/moep90/semaphore-cli/internal/commands/keystore"
 	"github.com/moep90/semaphore-cli/internal/commands/ping"
 	"github.com/moep90/semaphore-cli/internal/commands/project"
 	"github.com/moep90/semaphore-cli/internal/commands/task"
@@ -81,6 +84,9 @@ property of their respective owners.`,
 	root.AddCommand(project.NewProjectCommand())
 	root.AddCommand(template.NewTemplateCommand())
 	root.AddCommand(task.NewTaskCommand())
+	root.AddCommand(inventory.NewInventoryCommand())
+	root.AddCommand(environment.NewEnvironmentCommand())
+	root.AddCommand(keystore.NewKeystoreCommand())
 	root.AddCommand(info.NewInfoCommand())
 	root.AddCommand(ping.NewPingCommand())
 

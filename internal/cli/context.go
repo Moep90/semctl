@@ -77,7 +77,8 @@ func BuildContext(cfg *config.Config, hostFlag, projectFlag, outputFlag, profile
 
 	// Resolve token and create client.
 	token := auth.GetToken(ctx.Host, cfg)
-	ctx.Client = api.NewClient(ctx.Host, token)
+	tokenSource := auth.GetTokenSource(ctx.Host, cfg)
+	ctx.Client = api.NewClientWithSource(ctx.Host, token, tokenSource)
 
 	// Resolve output mode.
 	modeStr := firstNonEmpty(outputFlag, os.Getenv("SEMAPHORE_OUTPUT"), profileField(profile, func(p *config.Profile) string { return p.DefaultOutput }))
@@ -117,6 +118,33 @@ func (c *Context) ResolveTaskID(ctx context.Context, idOrName string) (int, erro
 		return 0, err
 	}
 	return resolver.ResolveTask(ctx, c.Client, projectID, idOrName)
+}
+
+// ResolveInventoryID resolves an inventory identifier to an ID.
+func (c *Context) ResolveInventoryID(ctx context.Context, idOrName string) (int, error) {
+	projectID, err := c.ResolveProjectID(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return resolver.ResolveInventory(ctx, c.Client, projectID, idOrName)
+}
+
+// ResolveEnvironmentID resolves an environment identifier to an ID.
+func (c *Context) ResolveEnvironmentID(ctx context.Context, idOrName string) (int, error) {
+	projectID, err := c.ResolveProjectID(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return resolver.ResolveEnvironment(ctx, c.Client, projectID, idOrName)
+}
+
+// ResolveKeystoreID resolves a keystore identifier to an ID.
+func (c *Context) ResolveKeystoreID(ctx context.Context, idOrName string) (int, error) {
+	projectID, err := c.ResolveProjectID(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return resolver.ResolveKeystore(ctx, c.Client, projectID, idOrName)
 }
 
 // LatestTaskID returns the latest task ID in the active project.
