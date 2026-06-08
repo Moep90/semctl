@@ -11,6 +11,19 @@ A command line interface for [Semaphore UI](https://semaphoreui.com). It feels s
 
 ## Installation
 
+### Homebrew (macOS and Linux)
+
+```bash
+brew install moep90/tap/semctl
+```
+
+Or:
+
+```bash
+brew tap moep90/tap
+brew install semctl
+```
+
 ### From source
 
 ```bash
