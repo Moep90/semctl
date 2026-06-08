@@ -7,6 +7,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0](https://github.com/Moep90/semctl/compare/v0.2.1...v0.3.0) (2026-06-08)
+
+
+### Features
+
+* add cookie-based authentication ([#15](https://github.com/Moep90/semctl/issues/15)) ([e2dc149](https://github.com/Moep90/semctl/commit/e2dc149f54f003d444d59be220bb8c91c2a62651))
+* add task run flags ([#16](https://github.com/Moep90/semctl/issues/16)) ([e2dc149](https://github.com/Moep90/semctl/commit/e2dc149f54f003d444d59be220bb8c91c2a62651))
+* implement feature requests [#14](https://github.com/Moep90/semctl/issues/14), [#15](https://github.com/Moep90/semctl/issues/15), [#16](https://github.com/Moep90/semctl/issues/16) ([#19](https://github.com/Moep90/semctl/issues/19)) ([e2dc149](https://github.com/Moep90/semctl/commit/e2dc149f54f003d444d59be220bb8c91c2a62651))
+* implement inventory, environment, keystore subcommands ([#14](https://github.com/Moep90/semctl/issues/14)) ([e2dc149](https://github.com/Moep90/semctl/commit/e2dc149f54f003d444d59be220bb8c91c2a62651))
+
 ## [0.2.1](https://github.com/Moep90/semctl/compare/v0.2.0...v0.2.1) (2026-06-08)
 
 
