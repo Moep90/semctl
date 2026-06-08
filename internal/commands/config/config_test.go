@@ -143,6 +143,59 @@ func TestProfileCreate(t *testing.T) {
 	}
 }
 
+func TestProfileCreateEmptyName(t *testing.T) {
+	tmp := t.TempDir()
+	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
+	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
+
+	root := newTestRoot(nil)
+	root.SetArgs([]string{"config", "profile", "create", ""})
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("expected error for empty profile name")
+	}
+	if !strings.Contains(err.Error(), "empty") {
+		t.Fatalf("expected error about empty name, got: %v", err)
+	}
+}
+
+func TestProfileCreateWhitespaceName(t *testing.T) {
+	tmp := t.TempDir()
+	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
+	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
+
+	root := newTestRoot(nil)
+	root.SetArgs([]string{"config", "profile", "create", "   "})
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("expected error for whitespace-only profile name")
+	}
+	if !strings.Contains(err.Error(), "empty") {
+		t.Fatalf("expected error about empty name, got: %v", err)
+	}
+}
+
+func TestConfigSetInvalidOutput(t *testing.T) {
+	tmp := t.TempDir()
+	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
+	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
+
+	cfg := cfgpkg.DefaultConfig()
+	cfg.CurrentProfile = "prod"
+	cfg.Profiles["prod"] = &cfgpkg.Profile{}
+	_ = cfgpkg.Save(cfg)
+
+	root := newTestRoot(nil)
+	root.SetArgs([]string{"config", "set", "output", "invalid_mode"})
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("expected error for invalid output mode")
+	}
+	if !strings.Contains(err.Error(), "invalid") || !strings.Contains(err.Error(), "output") {
+		t.Fatalf("expected error about invalid output, got: %v", err)
+	}
+}
+
 func newTestRoot(out *bytes.Buffer) *cobra.Command {
 	root := &cobra.Command{
 		Use:           "semctl",

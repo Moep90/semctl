@@ -117,6 +117,8 @@ The host is required and must be an absolute URL (https:// or http://).`,
 			if cookie {
 				tokenSource = "cookie"
 				// Prompt for username and password.
+				noInteractive, _ := cmd.Flags().GetBool("no-interactive")
+
 				fmt.Fprint(os.Stderr, "? Username: ")
 				reader := bufio.NewReader(os.Stdin)
 				username, err := reader.ReadString('\n')
@@ -130,7 +132,7 @@ The host is required and must be an absolute URL (https:// or http://).`,
 
 				fmt.Fprint(os.Stderr, "? Password: ")
 				var password string
-				if term.IsTerminal(int(os.Stdin.Fd())) {
+				if !noInteractive && term.IsTerminal(int(os.Stdin.Fd())) {
 					b, err := term.ReadPassword(int(os.Stdin.Fd()))
 					if err != nil {
 						return fmt.Errorf("read password: %w", err)

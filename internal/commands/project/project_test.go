@@ -150,6 +150,46 @@ func TestListCommandJSONFlag(t *testing.T) {
 	}
 }
 
+func TestListCommandOutputOverridesJSON(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]api.Project{
+			{ID: 1, Name: "infra"},
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	tmp := t.TempDir()
+	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
+	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
+
+	oldStdout := os.Stdout
+	rPipe, wPipe, _ := os.Pipe()
+	os.Stdout = wPipe
+
+	root := newTestRoot(nil)
+	// --output yaml should win over --json when explicitly set
+	root.SetArgs([]string{"project", "list", "--host", srv.URL, "--json", "--output", "yaml"})
+	err := root.Execute()
+
+	_ = wPipe.Close()
+	os.Stdout = oldStdout
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	data, _ := io.ReadAll(rPipe)
+	out := string(data)
+	if !strings.Contains(out, "infra") {
+		t.Fatalf("expected infra in output, got: %s", out)
+	}
+	// YAML output should NOT be JSON array
+	if strings.HasPrefix(strings.TrimSpace(out), "[") {
+		t.Fatalf("expected YAML output, got JSON: %s", out)
+	}
+}
+
 func TestGetCommand(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {

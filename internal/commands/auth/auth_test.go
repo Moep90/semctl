@@ -108,6 +108,54 @@ func TestCookieLoginFailure(t *testing.T) {
 	}
 }
 
+func TestCookieLoginNoInteractive(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/auth/login", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"invalid credentials"}`))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	tmp := t.TempDir()
+	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
+	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
+
+	// Pipe username and password to stdin.
+	oldStdin := os.Stdin
+	oldStderr := os.Stderr
+	stdinR, stdinW, _ := os.Pipe()
+	stderrR, stderrW, _ := os.Pipe()
+	os.Stdin = stdinR
+	os.Stderr = stderrW
+	go func() {
+		_, _ = io.WriteString(stdinW, "admin\n")
+		_, _ = io.WriteString(stdinW, "badpass\n")
+		_ = stdinW.Close()
+	}()
+
+	root := newTestRoot(nil)
+	root.AddCommand(NewAuthCommand())
+	root.SetArgs([]string{"auth", "login", srv.URL, "--cookie", "--no-interactive"})
+	err := root.Execute()
+
+	os.Stdin = oldStdin
+	os.Stderr = oldStderr
+	_ = stderrW.Close()
+
+	if err == nil {
+		t.Fatal("expected error for failed cookie login")
+	}
+	if !strings.Contains(err.Error(), "401") {
+		t.Fatalf("expected 401 in error, got: %v", err)
+	}
+	// Verify prompts were written to stderr
+	stderrData, _ := io.ReadAll(stderrR)
+	if !strings.Contains(string(stderrData), "Username") {
+		t.Fatalf("expected username prompt on stderr")
+	}
+}
+
 func newTestRoot(out *bytes.Buffer) *cobra.Command {
 	root := &cobra.Command{
 		Use:           "semctl",
@@ -122,6 +170,7 @@ func newTestRoot(out *bytes.Buffer) *cobra.Command {
 	root.PersistentFlags().Bool("no-color", false, "")
 	root.PersistentFlags().Bool("verbose", false, "")
 	root.PersistentFlags().Bool("debug", false, "")
+	root.PersistentFlags().Bool("no-interactive", false, "")
 	if out != nil {
 		root.SetOut(out)
 		root.SetErr(out)

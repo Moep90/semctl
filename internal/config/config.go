@@ -139,7 +139,12 @@ func (c *Config) Set(key, value string) error {
 	case "token_source":
 		p.TokenSource = value
 	case "output", "default_output":
-		p.DefaultOutput = value
+		switch value {
+		case "table", "json", "yaml", "text":
+			p.DefaultOutput = value
+		default:
+			return fmt.Errorf("invalid output mode %q; must be table, json, yaml, or text", value)
+		}
 	default:
 		return fmt.Errorf("unknown config key: %s", key)
 	}

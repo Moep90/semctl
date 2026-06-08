@@ -35,6 +35,8 @@ type Client struct {
 	httpClient  *http.Client
 	maxRetries  int
 	backoff     []time.Duration
+	debug       bool
+	debugOut    io.Writer
 }
 
 // NewClient creates a new API client.
@@ -69,6 +71,19 @@ func (c *Client) WithRetryPolicy(maxRetries int, backoff []time.Duration) *Clien
 	return c
 }
 
+// WithDebug enables debug logging to the given writer.
+func (c *Client) WithDebug(w io.Writer) *Client {
+	c.debug = true
+	c.debugOut = w
+	return c
+}
+
+func (c *Client) debugf(format string, args ...any) {
+	if c.debug && c.debugOut != nil {
+		_, _ = fmt.Fprintf(c.debugOut, "[debug] "+format+"\n", args...)
+	}
+}
+
 // Do performs an HTTP request against the API.
 func (c *Client) Do(ctx context.Context, method, path string, body any) (*http.Response, error) {
 	return c.DoWithHeaders(ctx, method, path, body, nil)
@@ -76,6 +91,7 @@ func (c *Client) Do(ctx context.Context, method, path string, body any) (*http.R
 
 // DoWithHeaders performs an HTTP request with additional headers.
 func (c *Client) DoWithHeaders(ctx context.Context, method, path string, body any, extra http.Header) (*http.Response, error) {
+	c.debugf("DoWithHeaders method=%s path=%s", method, path)
 	var lastErr error
 	for attempt := 0; attempt <= c.maxRetries; attempt++ {
 		if attempt > 0 {
@@ -83,6 +99,7 @@ func (c *Client) DoWithHeaders(ctx context.Context, method, path string, body an
 			if attempt-1 < len(c.backoff) {
 				delay = c.backoff[attempt-1]
 			}
+			c.debugf("retry attempt %d after %v", attempt, delay)
 			select {
 			case <-time.After(delay):
 			case <-ctx.Done():
@@ -93,12 +110,14 @@ func (c *Client) DoWithHeaders(ctx context.Context, method, path string, body an
 		resp, err := c.doOnce(ctx, method, path, body, extra)
 		if err != nil {
 			lastErr = err
+			c.debugf("request error: %v", err)
 			if !isRetryableError(err) {
 				return nil, err
 			}
 			continue
 		}
 
+		c.debugf("response status: %d", resp.StatusCode)
 		if !isRetryableStatus(resp.StatusCode) {
 			return resp, nil
 		}
@@ -142,16 +161,21 @@ func (c *Client) doOnce(ctx context.Context, method, path string, body any, extr
 	req.Header.Set("Accept", "application/json")
 	if c.token != "" {
 		if c.tokenSource == "cookie" {
+			c.debugf("auth: using cookie token source")
 			req.Header.Set("Cookie", "semaphore="+c.token)
 		} else {
+			c.debugf("auth: using bearer token source")
 			req.Header.Set("Authorization", "Bearer "+c.token)
 		}
+	} else {
+		c.debugf("auth: no token configured")
 	}
 	for k, vv := range extra {
 		for _, v := range vv {
 			req.Header.Add(k, v)
 		}
 	}
+	c.debugf("request %s %s headers=%v", method, u, req.Header)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
