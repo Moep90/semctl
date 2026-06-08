@@ -89,13 +89,13 @@ func Load() (*Config, error) {
 func Save(cfg *Config) error {
 	p := Path()
 	dir := filepath.Dir(p)
+	if err := os.MkdirAll(dir, 0750); err != nil {
+		return fmt.Errorf("create config dir: %w", err)
+	}
 	if stat, err := os.Stat(dir); err == nil {
 		if stat.Mode().Perm()&0002 != 0 {
 			return fmt.Errorf("config directory %s is world-writable; refusing to write secrets", dir)
 		}
-	}
-	if err := os.MkdirAll(dir, 0750); err != nil {
-		return fmt.Errorf("create config dir: %w", err)
 	}
 	data, err := yaml.Marshal(cfg)
 	if err != nil {

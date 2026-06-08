@@ -17,9 +17,12 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -230,6 +233,46 @@ func TestMaxRetriesExceeded(t *testing.T) {
 	}
 	if count.Load() != 3 {
 		t.Fatalf("expected 3 attempts, got %d", count.Load())
+	}
+}
+
+func TestBackoffBoundsCheck(t *testing.T) {
+	var count atomic.Int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/tasks", func(w http.ResponseWriter, r *http.Request) {
+		count.Add(1)
+		w.WriteHeader(http.StatusServiceUnavailable)
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	// maxRetries=5 but only 1 backoff duration — should not panic.
+	c := NewClient(srv.URL, "tok").WithRetryPolicy(5, []time.Duration{1 * time.Millisecond})
+	_, err := c.Do(context.Background(), http.MethodGet, "/tasks", nil)
+	if err == nil {
+		t.Fatal("expected error after max retries")
+	}
+	if count.Load() != 6 {
+		t.Fatalf("expected 6 attempts, got %d", count.Load())
+	}
+}
+
+func TestIsRetryableError(t *testing.T) {
+	if isRetryableError(nil) {
+		t.Error("nil should not be retryable")
+	}
+	if isRetryableError(context.Canceled) {
+		t.Error("context.Canceled should not be retryable")
+	}
+	if isRetryableError(context.DeadlineExceeded) {
+		t.Error("context.DeadlineExceeded should not be retryable")
+	}
+	if !isRetryableError(&url.Error{Err: &net.DNSError{IsTimeout: true}}) {
+		t.Error("timeout URL error should be retryable")
+	}
+	if isRetryableError(errors.New("some random error")) {
+		t.Error("random error should not be retryable")
 	}
 }
 

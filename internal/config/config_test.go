@@ -83,6 +83,31 @@ func TestRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSaveRejectsWorldWritableDir(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("skipping world-writable check when running as root")
+	}
+
+	tmp := t.TempDir()
+	old := os.Getenv("XDG_CONFIG_HOME")
+	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
+	defer func() { _ = os.Setenv("XDG_CONFIG_HOME", old) }()
+
+	// Create a world-writable directory.
+	badDir := filepath.Join(tmp, "semctl")
+	if err := os.MkdirAll(badDir, 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.Chmod(badDir, 0777); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+
+	cfg := DefaultConfig()
+	if err := Save(cfg); err == nil {
+		t.Fatal("expected error for world-writable config dir")
+	}
+}
+
 func TestSetGet(t *testing.T) {
 	cfg := DefaultConfig()
 	if err := cfg.Set("current_profile", "lab"); err != nil {

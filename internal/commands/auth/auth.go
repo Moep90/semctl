@@ -297,11 +297,15 @@ func newLogoutCommand() *cobra.Command {
 				return fmt.Errorf("host required; provide as argument or set SEMAPHORE_HOST")
 			}
 
-			_ = auth.Delete(host)
+			if err := auth.Delete(host); err != nil {
+				_, _ = fmt.Fprintf(os.Stderr, "warning: failed to remove token from keyring: %v\n", err)
+			}
 			cfg, err := config.Load()
 			if err == nil && cfg.ActiveProfile() != nil && cfg.ActiveProfile().Host == host {
 				cfg.ActiveProfile().Token = ""
-				_ = config.Save(cfg)
+				if saveErr := config.Save(cfg); saveErr != nil {
+					_, _ = fmt.Fprintf(os.Stderr, "warning: failed to clear profile token: %v\n", saveErr)
+				}
 			}
 			_, _ = fmt.Fprintf(os.Stdout, "✓ Logged out of %s\n", host)
 			return nil

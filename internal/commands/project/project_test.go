@@ -109,6 +109,47 @@ func TestListCommandJSON(t *testing.T) {
 	}
 }
 
+func TestListCommandJSONFlag(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]api.Project{
+			{ID: 1, Name: "infra"},
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	tmp := t.TempDir()
+	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
+	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	root := newTestRoot(nil)
+	root.SetArgs([]string{"project", "list", "--host", srv.URL, "--json"})
+	err := root.Execute()
+
+	_ = w.Close()
+	os.Stdout = oldStdout
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	data, _ := io.ReadAll(r)
+	if len(data) == 0 {
+		t.Fatal("empty output")
+	}
+	var out []map[string]any
+	if err := json.Unmarshal(data, &out); err != nil {
+		t.Fatalf("invalid json output (%q): %v", string(data), err)
+	}
+	if len(out) != 1 {
+		t.Fatalf("expected 1 project, got %d", len(out))
+	}
+}
+
 func TestGetCommand(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {

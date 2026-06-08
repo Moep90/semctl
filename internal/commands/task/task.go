@@ -187,29 +187,33 @@ a status-specific exit code suitable for CI pipelines:
 			}
 			projectID, _ := ctx.ResolveProjectID(cmd.Context())
 
-			body := map[string]any{
-				"template_id": templateID,
-			}
-			if message != "" {
-				body["message"] = message
-			}
-			if branch != "" {
-				body["git_branch"] = branch
+			body := api.TaskRunRequest{
+				TemplateID: templateID,
+				Message:    message,
+				GitBranch:  branch,
 			}
 			if environment != "" {
-				body["environment_id"] = environment
+				envID, err := ctx.ResolveEnvironmentID(cmd.Context(), environment)
+				if err != nil {
+					return fmt.Errorf("resolve environment: %w", err)
+				}
+				body.EnvironmentID = envID
 			}
 			if inventory != "" {
-				body["inventory_id"] = inventory
+				invID, err := ctx.ResolveInventoryID(cmd.Context(), inventory)
+				if err != nil {
+					return fmt.Errorf("resolve inventory: %w", err)
+				}
+				body.InventoryID = invID
 			}
 			if limit != "" {
-				body["limit"] = limit
+				body.Limit = limit
 			}
 			if diff {
-				body["diff"] = true
+				body.Diff = true
 			}
 			if dryRun {
-				body["dry_run"] = true
+				body.DryRun = true
 			}
 
 			resp, err := ctx.Client.Do(cmd.Context(), "POST", fmt.Sprintf("/project/%d/tasks", projectID), body)
@@ -222,7 +226,9 @@ a status-specific exit code suitable for CI pipelines:
 			}
 
 			ctx.Printer.PrintSuccess(fmt.Sprintf("Queued task %d from template %s", task.ID, args[0]))
-			_, _ = fmt.Fprintf(ctx.Printer.Stdout, "\nView logs:\n  semctl task logs %d --follow\n", task.ID)
+			if ctx.Printer.Mode == output.ModeTable || ctx.Printer.Mode == output.ModeText {
+				_, _ = fmt.Fprintf(ctx.Printer.Stdout, "\nView logs:\n  semctl task logs %d --follow\n", task.ID)
+			}
 
 			if watch {
 				return watchTask(cmd.Context(), ctx, task.ID, exitCode)
@@ -352,8 +358,8 @@ to preserve them.`,
 				if err := api.DecodeJSON(resp, &outputs); err != nil {
 					return fmt.Errorf("decode logs: %w", err)
 				}
-				for i, o := range outputs {
-					key := fmt.Sprintf("%d|%s|%s", i, o.Time, o.Output)
+				for _, o := range outputs {
+					key := o.Time + "|" + o.Output
 					if !seen[key] {
 						seen[key] = true
 						out := o.Output

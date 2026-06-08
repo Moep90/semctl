@@ -515,20 +515,20 @@ func ensureEnvironment(t *testing.T, host, token string, projectID int) int {
 }
 
 func extractTaskID(output string) string {
-	// Heuristic: look for a numeric ID in common output patterns
+	// Try to parse JSON first (task run --output json)
+	var task map[string]any
+	if err := json.Unmarshal([]byte(output), &task); err == nil {
+		if id, ok := task["id"].(float64); ok {
+			return fmt.Sprintf("%.0f", id)
+		}
+	}
+	// Fallback heuristic: look for a numeric ID in common output patterns
 	fields := strings.Fields(output)
 	for _, f := range fields {
 		f = strings.TrimRight(f, ".")
 		if _, err := fmt.Sscanf(f, "%d", new(int)); err == nil && len(f) < 12 {
 			return f
 		}
-	}
-	// Try to parse JSON
-	var task struct {
-		ID string `json:"id"`
-	}
-	if err := json.Unmarshal([]byte(output), &task); err == nil && task.ID != "" {
-		return task.ID
 	}
 	return ""
 }

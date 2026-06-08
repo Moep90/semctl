@@ -35,8 +35,8 @@ func NewPingCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, err := cli.BuildCmdContext(cmd)
 			if err != nil {
-				// ping may work without auth; try with host only.
-				return fmt.Errorf("no host configured; use --host or set SEMAPHORE_HOST")
+				// ping may work without auth; still needs a valid host.
+				return fmt.Errorf("ping setup failed: %w", err)
 			}
 			resp, err := ctx.Client.Do(cmd.Context(), "GET", "/ping", nil)
 			if err != nil {

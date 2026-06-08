@@ -137,19 +137,41 @@ func (p *Printer) PrintTable(headers []string, rows [][]string) error {
 
 // PrintError renders a structured error message.
 func (p *Printer) PrintError(msg string, suggestions []string) {
-	_, _ = fmt.Fprintf(p.Stderr, "error: %s\n", msg)
-	if len(suggestions) > 0 {
-		_, _ = fmt.Fprintln(p.Stderr)
-		_, _ = fmt.Fprintln(p.Stderr, "Try:")
-		for _, s := range suggestions {
-			_, _ = fmt.Fprintf(p.Stderr, "  %s\n", s)
+	switch p.Mode {
+	case ModeJSON:
+		payload := map[string]any{"error": msg}
+		if len(suggestions) > 0 {
+			payload["suggestions"] = suggestions
+		}
+		_ = json.NewEncoder(p.Stderr).Encode(payload)
+	case ModeYAML:
+		payload := map[string]any{"error": msg}
+		if len(suggestions) > 0 {
+			payload["suggestions"] = suggestions
+		}
+		_ = yaml.NewEncoder(p.Stderr).Encode(payload)
+	default:
+		_, _ = fmt.Fprintf(p.Stderr, "error: %s\n", msg)
+		if len(suggestions) > 0 {
+			_, _ = fmt.Fprintln(p.Stderr)
+			_, _ = fmt.Fprintln(p.Stderr, "Try:")
+			for _, s := range suggestions {
+				_, _ = fmt.Fprintf(p.Stderr, "  %s\n", s)
+			}
 		}
 	}
 }
 
 // PrintSuccess prints a success message.
 func (p *Printer) PrintSuccess(msg string) {
-	_, _ = fmt.Fprintf(p.Stdout, "✓ %s\n", msg)
+	switch p.Mode {
+	case ModeJSON:
+		_ = json.NewEncoder(p.Stdout).Encode(map[string]string{"message": msg})
+	case ModeYAML:
+		_ = yaml.NewEncoder(p.Stdout).Encode(map[string]string{"message": msg})
+	default:
+		_, _ = fmt.Fprintf(p.Stdout, "✓ %s\n", msg)
+	}
 }
 
 func isTerminal(f *os.File) bool {

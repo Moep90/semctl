@@ -123,6 +123,44 @@ func TestSanitizeANSI(t *testing.T) {
 	}
 }
 
+func TestPrintErrorJSON(t *testing.T) {
+	var buf bytes.Buffer
+	p := &Printer{Mode: ModeJSON, Stdout: &buf, Stderr: &buf}
+	p.PrintError("template not found", []string{"semctl template list"})
+	out := buf.String()
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
+		t.Fatalf("expected valid JSON error, got: %s", out)
+	}
+	if parsed["error"] != "template not found" {
+		t.Fatalf("unexpected error message: %v", parsed["error"])
+	}
+}
+
+func TestPrintErrorYAML(t *testing.T) {
+	var buf bytes.Buffer
+	p := &Printer{Mode: ModeYAML, Stdout: &buf, Stderr: &buf}
+	p.PrintError("template not found", []string{"semctl template list"})
+	out := buf.String()
+	if !strings.Contains(out, "error:") {
+		t.Fatalf("expected YAML error output, got: %s", out)
+	}
+}
+
+func TestPrintSuccessJSON(t *testing.T) {
+	var buf bytes.Buffer
+	p := &Printer{Mode: ModeJSON, Stdout: &buf, Stderr: &buf}
+	p.PrintSuccess("Task completed")
+	out := buf.String()
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
+		t.Fatalf("expected valid JSON success, got: %s", out)
+	}
+	if parsed["message"] != "Task completed" {
+		t.Fatalf("unexpected message: %v", parsed["message"])
+	}
+}
+
 func TestPrintError(t *testing.T) {
 	var buf bytes.Buffer
 	p := &Printer{Mode: ModeText, Stdout: &buf, Stderr: &buf}
