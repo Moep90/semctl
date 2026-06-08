@@ -1,0 +1,11 @@
+{
+  "id": 812,
+  "template_id": 7,
+  "project_id": 1,
+  "status": "success",
+  "message": "Deploy release 1.8.3",
+  "created": "2026-06-08T10:00:00Z",
+  "start": "2026-06-08T10:01:00Z",
+  "end": "2026-06-08T10:05:00Z",
+  "user_id": 1
+}

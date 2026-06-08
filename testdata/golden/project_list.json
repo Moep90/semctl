@@ -1,0 +1,14 @@
+[
+  {
+    "id": 1,
+    "name": "infra",
+    "max_parallel_tasks": 5,
+    "created": "2026-06-01T00:00:00Z"
+  },
+  {
+    "id": 2,
+    "name": "app",
+    "max_parallel_tasks": 3,
+    "created": "2026-06-02T00:00:00Z"
+  }
+]
