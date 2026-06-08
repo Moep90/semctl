@@ -23,6 +23,7 @@ import (
 	"github.com/moep90/semaphore-cli/internal/api"
 	"github.com/moep90/semaphore-cli/internal/cli"
 	"github.com/moep90/semaphore-cli/internal/config"
+	"github.com/moep90/semaphore-cli/internal/resolver"
 )
 
 // NewProjectCommand builds the project command group.
@@ -88,7 +89,7 @@ func newGetCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			projectID, err := ctx.ResolveProjectID(cmd.Context())
+			projectID, err := resolver.ResolveProject(cmd.Context(), ctx.Client, args[0])
 			if err != nil {
 				return err
 			}

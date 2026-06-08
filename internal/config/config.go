@@ -121,22 +121,49 @@ func (c *Config) ActiveProfile() *Profile {
 	return c.Profiles[c.CurrentProfile]
 }
 
-// Set sets a simple config key.
+// Set sets a simple config key on the active profile.
 func (c *Config) Set(key, value string) error {
-	switch key {
-	case "current_profile":
+	if key == "current_profile" {
 		c.CurrentProfile = value
+		return nil
+	}
+	p := c.ActiveProfile()
+	if p == nil {
+		return fmt.Errorf("no active profile; create one with 'semctl config profile create'")
+	}
+	switch key {
+	case "host":
+		p.Host = value
+	case "project":
+		p.Project = value
+	case "token_source":
+		p.TokenSource = value
+	case "output", "default_output":
+		p.DefaultOutput = value
 	default:
 		return fmt.Errorf("unknown config key: %s", key)
 	}
 	return nil
 }
 
-// Get returns a simple config value.
+// Get returns a simple config value from the active profile.
 func (c *Config) Get(key string) (string, error) {
-	switch key {
-	case "current_profile":
+	if key == "current_profile" {
 		return c.CurrentProfile, nil
+	}
+	p := c.ActiveProfile()
+	if p == nil {
+		return "", fmt.Errorf("no active profile; create one with 'semctl config profile create'")
+	}
+	switch key {
+	case "host":
+		return p.Host, nil
+	case "project":
+		return p.Project, nil
+	case "token_source":
+		return p.TokenSource, nil
+	case "output", "default_output":
+		return p.DefaultOutput, nil
 	default:
 		return "", fmt.Errorf("unknown config key: %s", key)
 	}

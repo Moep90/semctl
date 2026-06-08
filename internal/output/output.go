@@ -83,7 +83,9 @@ func (p *Printer) Print(data any) error {
 		return err
 	case ModeTable:
 		// Tables require specific data shapes; PrintTable should be used instead.
-		return p.Print(data)
+		enc := json.NewEncoder(p.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(data)
 	default:
 		enc := json.NewEncoder(p.Stdout)
 		enc.SetIndent("", "  ")

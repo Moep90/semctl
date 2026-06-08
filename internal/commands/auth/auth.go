@@ -163,6 +163,22 @@ The host is required and must be an absolute URL (https:// or http://).`,
 				if err := config.Save(cfg); err != nil {
 					return fmt.Errorf("save config: %w", err)
 				}
+			} else {
+				// Persist host in the active profile so subsequent commands don't need --host.
+				cfg, _ := config.Load()
+				if cfg == nil {
+					cfg = config.DefaultConfig()
+				}
+				profileName := cfg.CurrentProfile
+				if profileName == "" {
+					profileName = "default"
+					cfg.CurrentProfile = profileName
+				}
+				if cfg.Profiles[profileName] == nil {
+					cfg.Profiles[profileName] = &config.Profile{}
+				}
+				cfg.Profiles[profileName].Host = host
+				_ = config.Save(cfg)
 			}
 
 			_, _ = fmt.Fprintf(os.Stdout, "✓ Authenticated as %s\n", user.Username)

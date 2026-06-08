@@ -101,10 +101,18 @@ func (c *Client) DoWithHeaders(ctx context.Context, method, path string, body an
 }
 
 func (c *Client) doOnce(ctx context.Context, method, path string, body any, extra http.Header) (*http.Response, error) {
-	u, err := url.JoinPath(c.baseURL, "/api", path)
+	// Separate query string from path before joining.
+	pathOnly := path
+	query := ""
+	if idx := strings.Index(path, "?"); idx >= 0 {
+		pathOnly = path[:idx]
+		query = path[idx:]
+	}
+	u, err := url.JoinPath(c.baseURL, "/api", pathOnly)
 	if err != nil {
 		return nil, fmt.Errorf("build url: %w", err)
 	}
+	u += query
 
 	var bodyReader io.Reader
 	if body != nil {

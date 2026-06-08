@@ -19,6 +19,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/moep90/semaphore-cli/internal/cli"
 	"github.com/moep90/semaphore-cli/internal/config"
 )
 
@@ -93,12 +94,25 @@ func newListCommand() *cobra.Command {
 		Long:    `Show the current profile and key settings from the config file.`,
 		Example: `  semctl config list`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, err := cli.BuildCmdContext(cmd)
+			if err != nil {
+				return err
+			}
 			cfg, err := config.Load()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			fmt.Printf("current_profile: %s\n", cfg.CurrentProfile)
-			return nil
+			profile := cfg.ActiveProfile()
+			out := map[string]string{
+				"current_profile": cfg.CurrentProfile,
+			}
+			if profile != nil {
+				out["host"] = profile.Host
+				out["project"] = profile.Project
+				out["token_source"] = profile.TokenSource
+				out["default_output"] = profile.DefaultOutput
+			}
+			return ctx.Printer.Print(out)
 		},
 	}
 }

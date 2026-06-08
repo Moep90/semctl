@@ -150,6 +150,7 @@ func printTask(ctx context.Context, c *cli.Context, taskID int) error {
 
 func newRunCommand() *cobra.Command {
 	var message string
+	var branch string
 	var watch bool
 	var exitCode bool
 	cmd := &cobra.Command{
@@ -186,6 +187,9 @@ a status-specific exit code suitable for CI pipelines:
 			if message != "" {
 				body["message"] = message
 			}
+			if branch != "" {
+				body["git_branch"] = branch
+			}
 
 			resp, err := ctx.Client.Do(cmd.Context(), "POST", fmt.Sprintf("/project/%d/tasks", projectID), body)
 			if err != nil {
@@ -206,6 +210,7 @@ a status-specific exit code suitable for CI pipelines:
 		},
 	}
 	cmd.Flags().StringVar(&message, "message", "", "Task message")
+	cmd.Flags().StringVar(&branch, "branch", "", "Git branch override")
 	cmd.Flags().BoolVar(&watch, "watch", false, "Wait for the task to complete")
 	cmd.Flags().BoolVar(&exitCode, "exit-code", false, "Return task status as process exit code")
 	return cmd
@@ -215,9 +220,8 @@ func newStopCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "stop <TASK>",
 		Short: "Stop a running task",
-		Long:  `Request that a running or pending task be stopped. Accepts a task ID or name.`,
-		Example: `  semctl task stop 812
-  semctl task stop deploy-prod`,
+		Long:  `Request that a running or pending task be stopped. Accepts a task ID.`,
+		Example: `  semctl task stop 812`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, err := cli.BuildCmdContext(cmd)
