@@ -6,15 +6,24 @@ Thank you for your interest in contributing! This document outlines the workflow
 
 ## Getting Started
 
-1. **Fork** the repository on GitHub.
-2. **Clone** your fork locally.
-3. **Create a branch** for your change:
+1. **Open an issue** describing the bug, feature, or improvement. This keeps the discussion visible and avoids duplicate work.
+2. **Fork** the repository on GitHub.
+3. **Clone** your fork locally.
+4. **Create a branch** from `main` for your change:
    ```bash
    git checkout -b feat/my-feature
    ```
-4. **Make your changes** with clear, focused commits.
-5. **Run the checks** (see below).
-6. **Push** and open a **Pull Request** against `main`.
+   Branch naming convention:
+   - `feat/<short-description>` — new features
+   - `fix/<short-description>` — bug fixes
+   - `docs/<short-description>` — documentation changes
+   - `chore/<short-description>` — tooling, dependencies, CI
+5. **Make your changes** with clear, focused commits.
+6. **Run the checks** (see below).
+7. **Push** and open a **Pull Request** against `main`.
+   - Reference the issue in the PR description (e.g., `Closes #123`).
+   - Ensure CI passes before requesting review.
+   - A maintainer will review and merge once approved.
 
 ## Development Environment
 
