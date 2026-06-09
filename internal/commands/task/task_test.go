@@ -423,6 +423,7 @@ func TestRunCommandWatchWaitsForCompletion(t *testing.T) {
 }
 
 func TestStopCommand(t *testing.T) {
+	var gotForce any = "unset"
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode([]api.Project{{ID: 1, Name: "infra"}})
@@ -434,6 +435,9 @@ func TestStopCommand(t *testing.T) {
 		if r.Method != http.MethodPost {
 			t.Fatalf("expected POST, got %s", r.Method)
 		}
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		gotForce = body["force"]
 		w.WriteHeader(http.StatusNoContent)
 	})
 	srv := httptest.NewServer(mux)
@@ -443,8 +447,72 @@ func TestStopCommand(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(stdout, "Stopped task 812") {
+	// A plain stop is graceful: force must be sent as false.
+	if gotForce != false {
+		t.Fatalf("expected force=false in body, got %v (%T)", gotForce, gotForce)
+	}
+	if !strings.Contains(stdout, "task 812") {
 		t.Fatalf("expected stop confirmation, got: %s", stdout)
+	}
+}
+
+func TestStopCommandForce(t *testing.T) {
+	// A queued/waiting task only actually stops when force=true is sent (the
+	// Semaphore API always replies 204, so the body is what matters).
+	var gotForce any = "unset"
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]api.Project{{ID: 1, Name: "infra"}})
+	})
+	mux.HandleFunc("/api/project/1/tasks", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]api.Task{{ID: 812, TemplateID: 7, Status: "waiting"}})
+	})
+	mux.HandleFunc("/api/project/1/tasks/812/stop", func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		gotForce = body["force"]
+		w.WriteHeader(http.StatusNoContent)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	stdout, _, err := testutil.RunCommand(t, NewTaskCommand(), "task", "stop", "812", "--force", "--host", srv.URL, "--project", "infra")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotForce != true {
+		t.Fatalf("expected force=true in body, got %v (%T)", gotForce, gotForce)
+	}
+	if !strings.Contains(stdout, "forced") {
+		t.Fatalf("expected forced-stop confirmation, got: %s", stdout)
+	}
+}
+
+func TestStopCommandReportsAPIError(t *testing.T) {
+	// The Semaphore stop endpoint can reject a request (e.g. 400 when a task is
+	// not in a stoppable state). Client.Do only returns a Go error for transport
+	// failures and retry-exhausted 5xx — a 4xx surfaces only via CheckResponse.
+	// Without it the command falsely prints "Stopped task" (issue: stop reported
+	// success but the task kept running).
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]api.Project{{ID: 1, Name: "infra"}})
+	})
+	mux.HandleFunc("/api/project/1/tasks", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]api.Task{{ID: 812, TemplateID: 7, Status: "waiting"}})
+	})
+	mux.HandleFunc("/api/project/1/tasks/812/stop", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "task is not running", http.StatusBadRequest)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	stdout, _, err := testutil.RunCommand(t, NewTaskCommand(), "task", "stop", "812", "--host", srv.URL, "--project", "infra")
+	if err == nil {
+		t.Fatalf("expected error when stop endpoint returns 400, got nil (stdout: %s)", stdout)
+	}
+	if strings.Contains(stdout, "Stopped task") {
+		t.Fatalf("must not report success on API error, got: %s", stdout)
 	}
 }
 
