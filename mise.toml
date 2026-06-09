@@ -30,6 +30,10 @@ run = "golangci-lint run ./..."
 [tasks.test]
 run = "go test ./..."
 
+[tasks.coverage-check]
+description = "Fail if total coverage drops below the floor (.github/coverage-baseline)"
+run = "bash scripts/check-coverage.sh"
+
 [tasks.vuln]
 run = "govulncheck ./..."
 
