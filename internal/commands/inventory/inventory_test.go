@@ -224,3 +224,31 @@ func TestDeleteCommand(t *testing.T) {
 	}
 	srv.AssertCalled(t, "DELETE", "/api/project/2/inventory/7")
 }
+
+func TestGetCommandFullFields(t *testing.T) {
+	srv := testutil.NewMockServer()
+	defer srv.Close()
+	// Numeric arg short-circuits resolution, so only the get call is needed.
+	srv.Expect("GET", "/api/project/2/inventory/22", http.StatusOK,
+		`{"id":22,"name":"prod","project_id":2,"type":"static","inventory":"[web]\nhost1","ssh_key_id":5,"become_key_id":null}`)
+
+	stdout, _, err := testutil.RunCommand(t, NewInventoryCommand(),
+		"inventory", "get", "22", "--host", srv.URL(), "--project", "2", "--output", "json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal([]byte(stdout), &out); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if out["inventory"] != "[web]\nhost1" {
+		t.Fatalf("expected inventory content (issue #78), got: %v", out["inventory"])
+	}
+	if out["ssh_key_id"] != float64(5) {
+		t.Fatalf("expected ssh_key_id=5, got: %v", out["ssh_key_id"])
+	}
+	// become_key_id must be present as null so it can be audited (issue #78).
+	if v, ok := out["become_key_id"]; !ok || v != nil {
+		t.Fatalf("expected become_key_id present and null, got ok=%v val=%v", ok, v)
+	}
+}

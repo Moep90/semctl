@@ -104,6 +104,48 @@ func TestListCommand(t *testing.T) {
 	}
 }
 
+func TestGetCommandFullFields(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/project/1/tasks/812" {
+			http.Error(w, "unexpected", http.StatusNotFound)
+			return
+		}
+		// A still-running task: the Semaphore API returns Go's zero time for
+		// `end`, which must surface as null (issue #70), not 0001-01-01.
+		_, _ = w.Write([]byte(`{
+			"id": 812, "template_id": 7, "project_id": 1, "status": "running",
+			"commit_hash": "abc123", "commit_message": "deploy fix",
+			"playbook": "site.yml", "limit": "web*", "git_branch": "main",
+			"environment": "staging",
+			"start": "2026-06-09T10:00:00Z", "end": "0001-01-01T00:00:00Z"
+		}`))
+	}))
+	defer srv.Close()
+
+	stdout, _, err := testutil.RunCommand(t, NewTaskCommand(), "task", "get", "812", "--host", srv.URL, "--project", "1", "--output", "json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal([]byte(stdout), &out); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	for _, k := range []string{"commit_hash", "commit_message", "playbook", "limit"} {
+		if _, ok := out[k]; !ok {
+			t.Fatalf("expected %q in output (issue #82), got: %s", k, stdout)
+		}
+	}
+	if out["commit_hash"] != "abc123" {
+		t.Fatalf("commit_hash: %v", out["commit_hash"])
+	}
+	if out["playbook"] != "site.yml" {
+		t.Fatalf("playbook: %v", out["playbook"])
+	}
+	if v, ok := out["end"]; ok && v != nil {
+		t.Fatalf("expected end null for running task (issue #70), got: %v", v)
+	}
+}
+
 func TestRunCommand(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {

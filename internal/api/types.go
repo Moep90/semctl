@@ -46,17 +46,41 @@ type Template struct {
 	SuppressSuccessAlert      bool   `json:"suppress_success_alert,omitempty"`
 }
 
+// OmitZeroTime is a time.Time that marshals to JSON null when it holds the zero
+// value. The Semaphore API returns Go's zero time ("0001-01-01T00:00:00Z") for
+// timestamps that have not happened yet (e.g. `end` on a still-running task);
+// surfacing that as null is less misleading to consumers than the zero string.
+type OmitZeroTime struct {
+	time.Time
+}
+
+// MarshalJSON renders the zero time as null and otherwise defers to time.Time.
+func (t OmitZeroTime) MarshalJSON() ([]byte, error) {
+	if t.IsZero() {
+		return []byte("null"), nil
+	}
+	return t.Time.MarshalJSON()
+}
+
 // Task is a running or completed task.
 type Task struct {
-	ID         int       `json:"id"`
-	TemplateID int       `json:"template_id"`
-	ProjectID  int       `json:"project_id"`
-	Status     string    `json:"status"`
-	Message    string    `json:"message,omitempty"`
-	Created    time.Time `json:"created"`
-	Start      time.Time `json:"start,omitempty"`
-	End        time.Time `json:"end,omitempty"`
-	UserID     int       `json:"user_id,omitempty"`
+	ID            int          `json:"id"`
+	TemplateID    int          `json:"template_id"`
+	ProjectID     int          `json:"project_id"`
+	Status        string       `json:"status"`
+	Message       string       `json:"message,omitempty"`
+	Playbook      string       `json:"playbook,omitempty"`
+	Environment   string       `json:"environment,omitempty"`
+	GitBranch     string       `json:"git_branch,omitempty"`
+	Limit         string       `json:"limit,omitempty"`
+	CommitHash    string       `json:"commit_hash,omitempty"`
+	CommitMessage string       `json:"commit_message,omitempty"`
+	Arguments     string       `json:"arguments,omitempty"`
+	InventoryID   int          `json:"inventory_id,omitempty"`
+	Created       time.Time    `json:"created"`
+	Start         OmitZeroTime `json:"start"`
+	End           OmitZeroTime `json:"end"`
+	UserID        int          `json:"user_id,omitempty"`
 }
 
 // TaskOutput is a single log line from a task.
@@ -92,10 +116,15 @@ type AuthLoginResponse struct {
 
 // Inventory is a Semaphore UI inventory.
 type Inventory struct {
-	ID        int    `json:"id"`
-	Name      string `json:"name"`
-	ProjectID int    `json:"project_id,omitempty"`
-	Type      string `json:"type,omitempty"`
+	ID           int    `json:"id"`
+	Name         string `json:"name"`
+	ProjectID    int    `json:"project_id,omitempty"`
+	Type         string `json:"type,omitempty"`
+	Inventory    string `json:"inventory,omitempty"`
+	SSHKeyID     *int   `json:"ssh_key_id"`
+	BecomeKeyID  *int   `json:"become_key_id"`
+	RepositoryID *int   `json:"repository_id"`
+	TemplateID   *int   `json:"template_id"`
 }
 
 // Environment is a Semaphore UI environment.
@@ -139,14 +168,19 @@ type Repository struct {
 	Branch    string `json:"branch,omitempty"`
 }
 
-// Schedule is a scheduled task template execution.
+// Schedule is a scheduled task template execution. Field names follow the
+// Semaphore API body schema (`cron_format`, `active`), not the older
+// `cron_expression`/`enabled` names, which the API never returns.
 type Schedule struct {
 	ID             int    `json:"id"`
 	Name           string `json:"name"`
 	ProjectID      int    `json:"project_id,omitempty"`
 	TemplateID     int    `json:"template_id,omitempty"`
-	CronExpression string `json:"cron_expression,omitempty"`
-	Enabled        bool   `json:"enabled,omitempty"`
+	CronFormat     string `json:"cron_format,omitempty"`
+	Active         bool   `json:"active"`
+	Type           string `json:"type"`
+	DeleteAfterRun bool   `json:"delete_after_run"`
+	RepositoryID   *int   `json:"repository_id"`
 }
 
 // UserDetail extends User with additional metadata.

@@ -72,8 +72,8 @@ func newListCommand() *cobra.Command {
 					strconv.Itoa(s.ID),
 					s.Name,
 					strconv.Itoa(s.TemplateID),
-					s.CronExpression,
-					strconv.FormatBool(s.Enabled),
+					s.CronFormat,
+					strconv.FormatBool(s.Active),
 				}
 			}
 			return ctx.Printer.PrintTable([]string{"ID", "NAME", "TEMPLATE", "CRON", "ENABLED"}, rows)
