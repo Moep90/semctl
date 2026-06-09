@@ -13,7 +13,7 @@ Brief description of what this PR does and why.
 - [ ] `golangci-lint run ./...` passes.
 - [ ] `go test -race -count=1 ./...` passes.
 - [ ] `govulncheck ./...` passes (or no new reachable vulnerabilities).
-- [ ] I have added/updated tests for my changes.
+- [ ] I have added/updated tests for my changes (command tests use the `internal/testutil` harness — no manual cobra root or `os.Stdout` swapping).
 - [ ] I have updated documentation (`README.md`, `docs/`) if needed.
 
 ## Type of Change
