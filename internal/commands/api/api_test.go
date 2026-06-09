@@ -97,17 +97,19 @@ func TestAPIErrorResponse(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
+	// --output json must NOT suppress the exit code: an HTTP >= 400 response has
+	// to surface as a non-nil error so the process exits non-zero (issue #73).
+	// The JSON formatting of the error is handled by the top-level error
+	// renderer, which writes to stderr — never to stdout.
 	stdout, _, err := testutil.RunCommand(t, NewAPICommand(), "api", "GET", "/missing", "--host", srv.URL, "--output", "json")
-	// api command with --output json returns nil after writing JSON error to stdout.
-	if err != nil {
-		t.Fatalf("expected no error (JSON error on stdout), got: %v", err)
+	if err == nil {
+		t.Fatalf("expected error for HTTP 404 with --output json, got nil (stdout=%q)", stdout)
 	}
-	var out map[string]any
-	if err := json.Unmarshal([]byte(stdout), &out); err != nil {
-		t.Fatalf("expected JSON error on stdout, got: %s", stdout)
+	if !strings.Contains(err.Error(), "404") {
+		t.Fatalf("expected 404 in error, got: %v", err)
 	}
-	if out["error"] == "" {
-		t.Fatalf("expected error key in JSON, got: %v", out)
+	if strings.TrimSpace(stdout) != "" {
+		t.Fatalf("error must not be written to stdout, got: %q", stdout)
 	}
 }
 

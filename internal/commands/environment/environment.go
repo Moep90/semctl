@@ -134,8 +134,11 @@ func newCreateCommand() *cobra.Command {
 				"project_id": projectID,
 				"json":       envJSON,
 			}
-			_, err = ctx.Client.Do(cmd.Context(), "POST", fmt.Sprintf("/project/%d/environment", projectID), body)
+			resp, err := ctx.Client.Do(cmd.Context(), "POST", fmt.Sprintf("/project/%d/environment", projectID), body)
 			if err != nil {
+				return fmt.Errorf("create environment: %w", err)
+			}
+			if err := api.CheckResponse(resp); err != nil {
 				return fmt.Errorf("create environment: %w", err)
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "✓ Created environment %s\n", name)
@@ -181,8 +184,11 @@ func newUpdateCommand() *cobra.Command {
 				envJSON, _ := cmd.Flags().GetString("json")
 				body["json"] = envJSON
 			}
-			_, err = ctx.Client.Do(cmd.Context(), "PUT", fmt.Sprintf("/project/%d/environment/%d", projectID, environmentID), body)
+			resp, err := ctx.Client.Do(cmd.Context(), "PUT", fmt.Sprintf("/project/%d/environment/%d", projectID, environmentID), body)
 			if err != nil {
+				return fmt.Errorf("update environment: %w", err)
+			}
+			if err := api.CheckResponse(resp); err != nil {
 				return fmt.Errorf("update environment: %w", err)
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "✓ Updated environment %s\n", args[0])
@@ -215,8 +221,11 @@ func newDeleteCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			_, err = ctx.Client.Do(cmd.Context(), "DELETE", fmt.Sprintf("/project/%d/environment/%d", projectID, environmentID), nil)
+			resp, err := ctx.Client.Do(cmd.Context(), "DELETE", fmt.Sprintf("/project/%d/environment/%d", projectID, environmentID), nil)
 			if err != nil {
+				return fmt.Errorf("delete environment: %w", err)
+			}
+			if err := api.CheckResponse(resp); err != nil {
 				return fmt.Errorf("delete environment: %w", err)
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "✓ Deleted environment %s\n", args[0])

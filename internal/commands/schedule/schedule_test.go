@@ -141,6 +141,42 @@ func TestUpdateCommand(t *testing.T) {
 	}
 }
 
+func TestCreateCommandReportsServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"invalid cron"}`))
+	}))
+	defer srv.Close()
+
+	stdout, _, err := testutil.RunCommand(t, NewScheduleCommand(),
+		"schedule", "create", "--template", "7", "--cron", "not-a-cron", "--name", "bad",
+		"--host", srv.URL, "--project", "2")
+	if err == nil {
+		t.Fatalf("expected error on HTTP 400, got nil (stdout=%q)", stdout)
+	}
+	if strings.Contains(stdout, "Created schedule") {
+		t.Fatalf("must not report false success, got: %q", stdout)
+	}
+}
+
+func TestUpdateCommandReportsServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"schedule id in URL and in body must be the same"}`))
+	}))
+	defer srv.Close()
+
+	stdout, _, err := testutil.RunCommand(t, NewScheduleCommand(),
+		"schedule", "update", "5", "--cron", "0 3 * * *",
+		"--host", srv.URL, "--project", "2")
+	if err == nil {
+		t.Fatalf("expected error on HTTP 400, got nil (stdout=%q)", stdout)
+	}
+	if strings.Contains(stdout, "Updated schedule") {
+		t.Fatalf("must not report false success, got: %q", stdout)
+	}
+}
+
 func TestDeleteCommand(t *testing.T) {
 	srv := testutil.NewMockServer()
 	defer srv.Close()
