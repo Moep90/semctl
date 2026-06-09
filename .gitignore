@@ -1,4 +1,12 @@
 /bin/
+
+# Claude Code agent state (worktrees, local settings) — never commit
+.claude/
+
+# Coverage artifacts produced by CI and `mise run coverage-check`
+/coverage.out
+/coverage.txt
+
 docs/mitre-attack-mapping.md
 docs/mitre-layer.json
 docs/security-audit.md
