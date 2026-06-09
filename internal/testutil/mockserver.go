@@ -91,7 +91,7 @@ func (m *MockServer) Reset() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.expectations = m.expectations[:0]
-	m.calls = m.calls[:0]
+	m.calls = make([]call, 0)
 }
 
 // URL returns the base URL of the test server.

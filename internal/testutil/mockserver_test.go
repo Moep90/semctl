@@ -92,6 +92,13 @@ func TestMockServer_Reset(t *testing.T) {
 
 	ms.Reset()
 
+	// AssertCalled should fail because Reset cleared the call log.
+	fake := &fakeT{T: t}
+	ms.AssertCalled(fake, http.MethodGet, "/api/ping")
+	if !fake.failed {
+		t.Fatal("expected AssertCalled to fail because Reset cleared the call log")
+	}
+
 	// After reset the expectation is gone, so the same request should 404.
 	resp, err := http.Get(ms.URL() + "/api/ping")
 	if err != nil {
@@ -100,30 +107,6 @@ func TestMockServer_Reset(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("expected 404 after reset, got %d", resp.StatusCode)
-	}
-
-	// AssertCalled should fail for a cleared call log.
-	fake := &fakeT{T: t}
-	ms.AssertCalled(fake, http.MethodGet, "/api/ping")
-	if !fake.failed {
-		t.Fatal("expected AssertCalled to fail after Reset")
-	}
-}
-
-func TestMockServer_Reset_keeps_calls_after_reset(t *testing.T) {
-	ms := NewMockServer()
-	defer ms.Close()
-
-	ms.Expect(http.MethodGet, "/api/ping", http.StatusOK, "pong")
-	_, _ = http.Get(ms.URL() + "/api/ping")
-
-	ms.Reset()
-	// Do NOT make another request — the call log was cleared by Reset.
-
-	fake := &fakeT{T: t}
-	ms.AssertCalled(fake, http.MethodGet, "/api/ping")
-	if !fake.failed {
-		t.Fatal("expected AssertCalled to fail because Reset cleared the call log")
 	}
 }
 
