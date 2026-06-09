@@ -47,6 +47,9 @@ golangci-lint run ./...
 # Unit tests
 go test -race -count=1 ./...
 
+# Coverage floor (must not drop below .github/coverage-baseline)
+mise run coverage-check
+
 # Vulnerability check
 govulncheck ./...
 ```
