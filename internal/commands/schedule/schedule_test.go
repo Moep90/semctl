@@ -29,7 +29,7 @@ func TestListCommand(t *testing.T) {
 	srv := testutil.NewMockServer()
 	defer srv.Close()
 	srv.ExpectJSON("GET", "/api/project/2/schedules", http.StatusOK, []api.Schedule{
-		{ID: 5, Name: "nightly", TemplateID: 7, CronExpression: "0 2 * * *", Enabled: true},
+		{ID: 5, Name: "nightly", TemplateID: 7, CronFormat: "0 2 * * *", Active: true},
 	})
 
 	stdout, _, err := testutil.RunCommand(t, NewScheduleCommand(),
@@ -54,7 +54,7 @@ func TestGetCommand(t *testing.T) {
 	srv := testutil.NewMockServer()
 	defer srv.Close()
 	srv.ExpectJSON("GET", "/api/project/2/schedules/5", http.StatusOK,
-		api.Schedule{ID: 5, Name: "nightly", TemplateID: 7, CronExpression: "0 2 * * *", Enabled: true})
+		api.Schedule{ID: 5, Name: "nightly", TemplateID: 7, CronFormat: "0 2 * * *", Active: true})
 
 	// Numeric arg short-circuits resolution, so no list call is required.
 	stdout, _, err := testutil.RunCommand(t, NewScheduleCommand(),
@@ -68,6 +68,31 @@ func TestGetCommand(t *testing.T) {
 	}
 	if out["name"] != "nightly" {
 		t.Fatalf("unexpected name: %v", out["name"])
+	}
+}
+
+func TestGetCommandFullFields(t *testing.T) {
+	srv := testutil.NewMockServer()
+	defer srv.Close()
+	// The Semaphore API uses `cron_format` and `active`; the struct previously
+	// decoded `cron_expression`/`enabled`, so these never populated (issue #75).
+	srv.Expect("GET", "/api/project/2/schedules/12", http.StatusOK,
+		`{"id":12,"project_id":2,"template_id":1,"cron_format":"0 2 * * *","name":"nightly","active":true,"type":"","delete_after_run":false}`)
+
+	stdout, _, err := testutil.RunCommand(t, NewScheduleCommand(),
+		"schedule", "get", "12", "--host", srv.URL(), "--project", "2", "--output", "json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal([]byte(stdout), &out); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if out["cron_format"] != "0 2 * * *" {
+		t.Fatalf("expected cron_format populated, got: %s", stdout)
+	}
+	if out["active"] != true {
+		t.Fatalf("expected active=true, got: %v", out["active"])
 	}
 }
 
