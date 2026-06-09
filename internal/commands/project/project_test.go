@@ -193,7 +193,8 @@ func TestCreateCommand(t *testing.T) {
 			http.Error(w, "unexpected name", http.StatusBadRequest)
 			return
 		}
-		w.WriteHeader(http.StatusOK)
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": 5, "name": "infra"})
 	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
@@ -239,5 +240,27 @@ func TestSetCommand(t *testing.T) {
 	}
 	if !strings.Contains(string(read), "output: json") && !strings.Contains(string(read), "default_output: json") {
 		t.Fatalf("expected profile output to be updated, got: %s", string(read))
+	}
+}
+
+func TestCreateCommandJSON(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": 5, "name": "infra", "max_parallel_tasks": 0})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	stdout, _, err := testutil.RunCommand(t, NewProjectCommand(), "project", "create", "--name", "infra", "--host", srv.URL, "--output", "json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal([]byte(stdout), &out); err != nil {
+		t.Fatalf("expected JSON object for created project (issue #87), got: %s", stdout)
+	}
+	if out["id"] != float64(5) {
+		t.Fatalf("expected created project id 5, got: %v", out["id"])
 	}
 }
