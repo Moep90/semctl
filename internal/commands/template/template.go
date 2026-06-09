@@ -16,7 +16,6 @@ package template
 
 import (
 	"fmt"
-	"net/url"
 	"strconv"
 
 	"github.com/spf13/cobra"
@@ -24,32 +23,6 @@ import (
 	"github.com/moep90/semaphore-cli/internal/api"
 	"github.com/moep90/semaphore-cli/internal/cli"
 )
-
-// paginationQuery builds the "?count=<limit>&page=<page>" query string from the
-// --limit and --page flags, including only the flags that were explicitly set.
-// It returns an empty string when neither flag is set, preserving the
-// unpaginated request behavior.
-func paginationQuery(cmd *cobra.Command) string {
-	q := url.Values{}
-	if cmd.Flags().Changed("limit") {
-		limit, _ := cmd.Flags().GetInt("limit")
-		q.Set("count", strconv.Itoa(limit))
-	}
-	if cmd.Flags().Changed("page") {
-		page, _ := cmd.Flags().GetInt("page")
-		q.Set("page", strconv.Itoa(page))
-	}
-	if len(q) == 0 {
-		return ""
-	}
-	return "?" + q.Encode()
-}
-
-// addPaginationFlags registers the --limit and --page pagination flags.
-func addPaginationFlags(cmd *cobra.Command) {
-	cmd.Flags().Int("limit", 0, "Maximum number of items to return per page")
-	cmd.Flags().Int("page", 0, "Page number to retrieve (1-based)")
-}
 
 // NewTemplateCommand builds the template command group.
 func NewTemplateCommand() *cobra.Command {
@@ -85,7 +58,7 @@ func newListCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			path := fmt.Sprintf("/project/%d/templates", projectID) + paginationQuery(cmd)
+			path := fmt.Sprintf("/project/%d/templates", projectID) + cli.PaginationQuery(cmd)
 			resp, err := ctx.Client.Do(cmd.Context(), "GET", path, nil)
 			if err != nil {
 				return fmt.Errorf("list templates: %w", err)
@@ -94,6 +67,7 @@ func newListCommand() *cobra.Command {
 			if err := api.DecodeJSON(resp, &templates); err != nil {
 				return fmt.Errorf("decode templates: %w", err)
 			}
+			templates = cli.Paginate(templates, cmd)
 			rows := make([][]string, len(templates))
 			for i, t := range templates {
 				rows[i] = []string{
@@ -101,16 +75,25 @@ func newListCommand() *cobra.Command {
 					t.Name,
 					t.App,
 					t.Playbook,
-					t.Repository,
-					t.Inventory,
-					t.Environment,
+					optionalID(t.RepositoryID),
+					optionalID(t.InventoryID),
+					optionalID(t.EnvironmentID),
 				}
 			}
-			return ctx.Printer.PrintTable([]string{"ID", "NAME", "APP", "PLAYBOOK", "REPOSITORY", "INVENTORY", "ENVIRONMENT"}, rows)
+			return ctx.Printer.PrintList([]string{"ID", "NAME", "APP", "PLAYBOOK", "REPOSITORY", "INVENTORY", "ENVIRONMENT"}, rows, templates)
 		},
 	}
-	addPaginationFlags(cmd)
+	cli.AddPaginationFlags(cmd)
 	return cmd
+}
+
+// optionalID renders an association id for table output, showing an empty cell
+// when the id is unset (0) rather than a misleading "0".
+func optionalID(id int) string {
+	if id == 0 {
+		return ""
+	}
+	return strconv.Itoa(id)
 }
 
 func newGetCommand() *cobra.Command {

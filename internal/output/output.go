@@ -142,6 +142,19 @@ func (p *Printer) PrintTable(headers []string, rows [][]string) error {
 	return table.Render()
 }
 
+// PrintList renders a list of items. In JSON/YAML modes it marshals data
+// directly, preserving the resource's native lowercase snake_case schema so
+// that `list` output matches `get`/`last` for the same resource. In
+// table/CSV/TSV modes it renders the supplied headers and rows for humans.
+func (p *Printer) PrintList(headers []string, rows [][]string, data any) error {
+	switch p.Mode {
+	case ModeJSON, ModeYAML:
+		return p.Print(data)
+	default:
+		return p.PrintTable(headers, rows)
+	}
+}
+
 // PrintError renders a structured error message.
 func (p *Printer) PrintError(msg string, suggestions []string) {
 	switch p.Mode {

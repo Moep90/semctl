@@ -44,9 +44,12 @@ func TestListCommand(t *testing.T) {
 	if len(out) != 1 {
 		t.Fatalf("expected 1 schedule, got %d", len(out))
 	}
-	// PrintTable renders JSON keyed by the uppercase column headers.
-	if out[0]["NAME"] != "nightly" {
-		t.Fatalf("unexpected name: %v", out[0]["NAME"])
+	// list JSON now matches `get`: native lowercase snake_case keys.
+	if out[0]["name"] != "nightly" {
+		t.Fatalf("unexpected name: %v", out[0]["name"])
+	}
+	if out[0]["cron_format"] != "0 2 * * *" {
+		t.Fatalf("expected cron_format in list JSON, got: %s", stdout)
 	}
 }
 

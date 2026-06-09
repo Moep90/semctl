@@ -43,12 +43,13 @@ func NewScheduleCommand() *cobra.Command {
 }
 
 func newListCommand() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List schedules",
 		Long:  `Show all schedules in the active project.`,
 		Example: `  semctl schedule list
-  semctl schedule list --json`,
+  semctl schedule list --json
+  semctl schedule list --limit 20 --page 2`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, err := cli.BuildCmdContext(cmd)
 			if err != nil {
@@ -58,7 +59,8 @@ func newListCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resp, err := ctx.Client.Do(cmd.Context(), "GET", fmt.Sprintf("/project/%d/schedules", projectID), nil)
+			path := fmt.Sprintf("/project/%d/schedules", projectID) + cli.PaginationQuery(cmd)
+			resp, err := ctx.Client.Do(cmd.Context(), "GET", path, nil)
 			if err != nil {
 				return fmt.Errorf("list schedules: %w", err)
 			}
@@ -66,6 +68,7 @@ func newListCommand() *cobra.Command {
 			if err := api.DecodeJSON(resp, &schedules); err != nil {
 				return fmt.Errorf("decode schedules: %w", err)
 			}
+			schedules = cli.Paginate(schedules, cmd)
 			rows := make([][]string, len(schedules))
 			for i, s := range schedules {
 				rows[i] = []string{
@@ -76,9 +79,11 @@ func newListCommand() *cobra.Command {
 					strconv.FormatBool(s.Active),
 				}
 			}
-			return ctx.Printer.PrintTable([]string{"ID", "NAME", "TEMPLATE", "CRON", "ENABLED"}, rows)
+			return ctx.Printer.PrintList([]string{"ID", "NAME", "TEMPLATE", "CRON", "ENABLED"}, rows, schedules)
 		},
 	}
+	cli.AddPaginationFlags(cmd)
+	return cmd
 }
 
 func newGetCommand() *cobra.Command {
