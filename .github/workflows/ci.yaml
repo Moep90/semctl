@@ -158,7 +158,9 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          echo "Next version: $(semantic-release version --print 2>/dev/null || echo 'no release')"
+          echo "Next version: $(semantic-release --config releaserc.toml version --print 2>/dev/null || echo 'no release')"
           # Compute version + create/push the tag only. GoReleaser (Release
           # workflow) builds artifacts and publishes the GitHub Release + notes.
-          semantic-release version --no-commit --no-changelog --no-vcs-release --skip-build --tag --push
+          # --config is required: PSR does not auto-discover releaserc.toml, and
+          # without it the defaults (allow_zero_version=false) force v1.0.0.
+          semantic-release --config releaserc.toml version --no-commit --no-changelog --no-vcs-release --skip-build --tag --push
