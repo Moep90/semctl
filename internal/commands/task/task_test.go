@@ -516,6 +516,64 @@ func TestStopCommandReportsAPIError(t *testing.T) {
 	}
 }
 
+func TestStopCommandWait(t *testing.T) {
+	// --wait must poll after firing the stop until the task actually reaches a
+	// stopped state, instead of returning the moment the 204 comes back.
+	statusCalls := 0
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]api.Project{{ID: 1, Name: "infra"}})
+	})
+	mux.HandleFunc("/api/project/1/tasks/812/stop", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("/api/project/1/tasks/812", func(w http.ResponseWriter, r *http.Request) {
+		statusCalls++
+		status := "stopping"
+		if statusCalls >= 2 {
+			status = "stopped"
+		}
+		_ = json.NewEncoder(w).Encode(api.Task{ID: 812, Status: status})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	stdout, _, err := testutil.RunCommand(t, NewTaskCommand(), "task", "stop", "812", "--force", "--wait", "--interval", "10ms", "--host", srv.URL, "--project", "infra")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if statusCalls < 2 {
+		t.Fatalf("--wait did not poll until stopped, status calls: %d", statusCalls)
+	}
+	if !strings.Contains(stdout, "stopped") {
+		t.Fatalf("expected stopped confirmation, got: %s", stdout)
+	}
+}
+
+func TestStopCommandWaitTimeout(t *testing.T) {
+	// --timeout must abort the wait with an error if the task never stops.
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]api.Project{{ID: 1, Name: "infra"}})
+	})
+	mux.HandleFunc("/api/project/1/tasks/812/stop", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("/api/project/1/tasks/812", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(api.Task{ID: 812, Status: "stopping"}) // never terminal
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	_, _, err := testutil.RunCommand(t, NewTaskCommand(), "task", "stop", "812", "--force", "--wait", "--interval", "10ms", "--timeout", "50ms", "--host", srv.URL, "--project", "infra")
+	if err == nil {
+		t.Fatal("expected timeout error when task never stops")
+	}
+	if !strings.Contains(err.Error(), "timed out") && !strings.Contains(err.Error(), "timeout") {
+		t.Fatalf("expected timeout error, got: %v", err)
+	}
+}
+
 func TestLogsCommand(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {
