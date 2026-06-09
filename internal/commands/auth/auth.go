@@ -367,14 +367,17 @@ func newStatusCommand() *cobra.Command {
 				return nil
 			}
 
-			client := api.NewClient(profile.Host, token)
+			// Validate using the profile's auth scheme (bearer token or cookie
+			// session); a bearer client would always fail a cookie session.
+			source := auth.GetTokenSource(profile.Host, cfg)
+			client := api.NewClientWithSource(profile.Host, token, source)
 			user, err := auth.Login(cmd.Context(), client)
 			if err != nil {
-				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "logged in to %s (token invalid)\n", profile.Host)
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "logged in to %s (%s session invalid)\n", profile.Host, source)
 				return nil
 			}
 
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "✓ Logged in to %s as %s\n", profile.Host, user.Username)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "✓ Logged in to %s as %s (%s)\n", profile.Host, user.Username, source)
 			return nil
 		},
 	}

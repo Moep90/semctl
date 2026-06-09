@@ -29,14 +29,21 @@ type Project struct {
 
 // Template is a task template.
 type Template struct {
-	ID          int    `json:"id"`
-	Name        string `json:"name"`
-	ProjectID   int    `json:"project_id,omitempty"`
-	App         string `json:"app,omitempty"`
-	Playbook    string `json:"playbook,omitempty"`
-	Repository  string `json:"repository,omitempty"`
-	Inventory   string `json:"inventory,omitempty"`
-	Environment string `json:"environment,omitempty"`
+	ID                        int    `json:"id"`
+	Name                      string `json:"name"`
+	ProjectID                 int    `json:"project_id,omitempty"`
+	App                       string `json:"app,omitempty"`
+	Playbook                  string `json:"playbook,omitempty"`
+	Repository                string `json:"repository,omitempty"`
+	Inventory                 string `json:"inventory,omitempty"`
+	Environment               string `json:"environment,omitempty"`
+	InventoryID               int    `json:"inventory_id,omitempty"`
+	EnvironmentID             int    `json:"environment_id,omitempty"`
+	RepositoryID              int    `json:"repository_id,omitempty"`
+	ViewID                    int    `json:"view_id,omitempty"`
+	GitBranch                 string `json:"git_branch,omitempty"`
+	AllowOverrideBranchInTask bool   `json:"allow_override_branch_in_task,omitempty"`
+	SuppressSuccessAlert      bool   `json:"suppress_success_alert,omitempty"`
 }
 
 // Task is a running or completed task.
