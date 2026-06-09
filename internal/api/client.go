@@ -156,7 +156,7 @@ func (c *Client) Do(ctx context.Context, method, path string, body any) (*http.R
 // automatically following Link headers and appending to dest.
 func (c *Client) FetchAllPages(ctx context.Context, path string, dest any) error {
 	rv := reflect.ValueOf(dest)
-	if rv.Kind() != reflect.Ptr || rv.Elem().Kind() != reflect.Slice {
+	if rv.Kind() != reflect.Pointer || rv.Elem().Kind() != reflect.Slice {
 		return fmt.Errorf("dest must be a pointer to a slice")
 	}
 	elemType := rv.Elem().Type().Elem()
