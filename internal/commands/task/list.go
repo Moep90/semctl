@@ -17,7 +17,6 @@ package task
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"strconv"
 
 	"github.com/spf13/cobra"
@@ -25,32 +24,6 @@ import (
 	"github.com/moep90/semaphore-cli/internal/api"
 	"github.com/moep90/semaphore-cli/internal/cli"
 )
-
-// paginationQuery builds the "?count=<limit>&page=<page>" query string from the
-// --limit and --page flags, including only the flags that were explicitly set.
-// It returns an empty string when neither flag is set, preserving the
-// unpaginated request behavior.
-func paginationQuery(cmd *cobra.Command) string {
-	q := url.Values{}
-	if cmd.Flags().Changed("limit") {
-		limit, _ := cmd.Flags().GetInt("limit")
-		q.Set("count", strconv.Itoa(limit))
-	}
-	if cmd.Flags().Changed("page") {
-		page, _ := cmd.Flags().GetInt("page")
-		q.Set("page", strconv.Itoa(page))
-	}
-	if len(q) == 0 {
-		return ""
-	}
-	return "?" + q.Encode()
-}
-
-// addPaginationFlags registers the --limit and --page pagination flags.
-func addPaginationFlags(cmd *cobra.Command) {
-	cmd.Flags().Int("limit", 0, "Maximum number of items to return per page")
-	cmd.Flags().Int("page", 0, "Page number to retrieve (1-based)")
-}
 
 func newListCommand() *cobra.Command {
 	cmd := &cobra.Command{
@@ -69,7 +42,7 @@ func newListCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			path := fmt.Sprintf("/project/%d/tasks", projectID) + paginationQuery(cmd)
+			path := fmt.Sprintf("/project/%d/tasks", projectID) + cli.PaginationQuery(cmd)
 			resp, err := ctx.Client.Do(cmd.Context(), "GET", path, nil)
 			if err != nil {
 				return fmt.Errorf("list tasks: %w", err)
@@ -78,6 +51,7 @@ func newListCommand() *cobra.Command {
 			if err := api.DecodeJSON(resp, &tasks); err != nil {
 				return fmt.Errorf("decode tasks: %w", err)
 			}
+			tasks = cli.Paginate(tasks, cmd)
 			rows := make([][]string, len(tasks))
 			for i, t := range tasks {
 				rows[i] = []string{
@@ -88,10 +62,10 @@ func newListCommand() *cobra.Command {
 					t.Created.Format("2006-01-02 15:04"),
 				}
 			}
-			return ctx.Printer.PrintTable([]string{"ID", "TEMPLATE", "STATUS", "MESSAGE", "CREATED"}, rows)
+			return ctx.Printer.PrintList([]string{"ID", "TEMPLATE", "STATUS", "MESSAGE", "CREATED"}, rows, tasks)
 		},
 	}
-	addPaginationFlags(cmd)
+	cli.AddPaginationFlags(cmd)
 	return cmd
 }
 

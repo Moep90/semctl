@@ -146,6 +146,71 @@ func TestGetCommandFullFields(t *testing.T) {
 	}
 }
 
+func TestListCommandJSONSchema(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]api.Task{
+			{ID: 10, TemplateID: 7, ProjectID: 1, Status: "success", Message: "Deploy"},
+		})
+	}))
+	defer srv.Close()
+
+	stdout, _, err := testutil.RunCommand(t, NewTaskCommand(), "task", "list", "--host", srv.URL, "--project", "1", "--output", "json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var out []map[string]any
+	if err := json.Unmarshal([]byte(stdout), &out); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	// list JSON must match `task get`: lowercase snake_case keys, id as a number.
+	if out[0]["id"] != float64(10) {
+		t.Fatalf("expected numeric id=10, got %v (%T)", out[0]["id"], out[0]["id"])
+	}
+	if out[0]["template_id"] != float64(7) {
+		t.Fatalf("expected template_id=7, got %v", out[0]["template_id"])
+	}
+	if _, ok := out[0]["project_id"]; !ok {
+		t.Fatalf("expected project_id key (parity with get), got: %s", stdout)
+	}
+	if _, ok := out[0]["TEMPLATE"]; ok {
+		t.Fatalf("must not emit uppercase keys, got: %s", stdout)
+	}
+}
+
+func TestListCommandClientSidePagination(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]api.Task{{ID: 1}, {ID: 2}, {ID: 3}, {ID: 4}, {ID: 5}})
+	})
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+
+	// --limit 2 must cap the result at 2 even though the server returns all 5.
+	stdout, _, err := testutil.RunCommand(t, NewTaskCommand(), "task", "list", "--limit", "2", "--host", srv.URL, "--project", "1", "--output", "json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var page1 []map[string]any
+	if err := json.Unmarshal([]byte(stdout), &page1); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if len(page1) != 2 || page1[0]["id"] != float64(1) || page1[1]["id"] != float64(2) {
+		t.Fatalf("expected ids [1,2], got: %s", stdout)
+	}
+
+	// --page 2 offsets by one page.
+	stdout2, _, err := testutil.RunCommand(t, NewTaskCommand(), "task", "list", "--limit", "2", "--page", "2", "--host", srv.URL, "--project", "1", "--output", "json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var page2 []map[string]any
+	if err := json.Unmarshal([]byte(stdout2), &page2); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if len(page2) != 2 || page2[0]["id"] != float64(3) || page2[1]["id"] != float64(4) {
+		t.Fatalf("expected ids [3,4], got: %s", stdout2)
+	}
+}
+
 func TestRunCommand(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {

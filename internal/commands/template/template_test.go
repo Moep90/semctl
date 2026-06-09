@@ -255,3 +255,33 @@ func TestGetCommandIncludesFullConfig(t *testing.T) {
 		}
 	}
 }
+
+func TestListCommandJSONSchema(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]api.Template{
+			{ID: 7, Name: "deploy-prod", App: "ansible", Playbook: "site.yml",
+				InventoryID: 9, EnvironmentID: 5, RepositoryID: 3},
+		})
+	}))
+	defer srv.Close()
+
+	stdout, _, err := testutil.RunCommand(t, NewTemplateCommand(), "template", "list", "--host", srv.URL, "--project", "2", "--output", "json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var out []map[string]any
+	if err := json.Unmarshal([]byte(stdout), &out); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	// id must be an integer (issue #71), not the string "7".
+	if out[0]["id"] != float64(7) {
+		t.Fatalf("expected numeric id=7, got %v (%T)", out[0]["id"], out[0]["id"])
+	}
+	// association ids must be present (issue #67), not blank.
+	if out[0]["inventory_id"] != float64(9) {
+		t.Fatalf("expected inventory_id=9, got: %s", stdout)
+	}
+	if _, ok := out[0]["ID"]; ok {
+		t.Fatalf("must not emit uppercase keys, got: %s", stdout)
+	}
+}

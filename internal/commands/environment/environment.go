@@ -45,12 +45,13 @@ func NewEnvironmentCommand() *cobra.Command {
 }
 
 func newListCommand() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List environments",
 		Long:  `Show all environments in the active project.`,
 		Example: `  semctl environment list
-  semctl environment list --json`,
+  semctl environment list --json
+  semctl environment list --limit 20 --page 2`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, err := cli.BuildCmdContext(cmd)
 			if err != nil {
@@ -60,7 +61,8 @@ func newListCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resp, err := ctx.Client.Do(cmd.Context(), "GET", fmt.Sprintf("/project/%d/environment", projectID), nil)
+			path := fmt.Sprintf("/project/%d/environment", projectID) + cli.PaginationQuery(cmd)
+			resp, err := ctx.Client.Do(cmd.Context(), "GET", path, nil)
 			if err != nil {
 				return fmt.Errorf("list environment: %w", err)
 			}
@@ -68,6 +70,7 @@ func newListCommand() *cobra.Command {
 			if err := api.DecodeJSON(resp, &environments); err != nil {
 				return fmt.Errorf("decode environment: %w", err)
 			}
+			environments = cli.Paginate(environments, cmd)
 			rows := make([][]string, len(environments))
 			for i, env := range environments {
 				rows[i] = []string{
@@ -75,9 +78,11 @@ func newListCommand() *cobra.Command {
 					env.Name,
 				}
 			}
-			return ctx.Printer.PrintTable([]string{"ID", "NAME"}, rows)
+			return ctx.Printer.PrintList([]string{"ID", "NAME"}, rows, environments)
 		},
 	}
+	cli.AddPaginationFlags(cmd)
+	return cmd
 }
 
 func newGetCommand() *cobra.Command {

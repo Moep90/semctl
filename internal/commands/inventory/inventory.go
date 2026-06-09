@@ -16,7 +16,6 @@ package inventory
 
 import (
 	"fmt"
-	"net/url"
 	"os"
 	"strconv"
 
@@ -25,32 +24,6 @@ import (
 	"github.com/moep90/semaphore-cli/internal/api"
 	"github.com/moep90/semaphore-cli/internal/cli"
 )
-
-// paginationQuery builds the "?count=<limit>&page=<page>" query string from the
-// --limit and --page flags, including only the flags that were explicitly set.
-// It returns an empty string when neither flag is set, preserving the
-// unpaginated request behavior.
-func paginationQuery(cmd *cobra.Command) string {
-	q := url.Values{}
-	if cmd.Flags().Changed("limit") {
-		limit, _ := cmd.Flags().GetInt("limit")
-		q.Set("count", strconv.Itoa(limit))
-	}
-	if cmd.Flags().Changed("page") {
-		page, _ := cmd.Flags().GetInt("page")
-		q.Set("page", strconv.Itoa(page))
-	}
-	if len(q) == 0 {
-		return ""
-	}
-	return "?" + q.Encode()
-}
-
-// addPaginationFlags registers the --limit and --page pagination flags.
-func addPaginationFlags(cmd *cobra.Command) {
-	cmd.Flags().Int("limit", 0, "Maximum number of items to return per page")
-	cmd.Flags().Int("page", 0, "Page number to retrieve (1-based)")
-}
 
 // NewInventoryCommand builds the inventory command group.
 func NewInventoryCommand() *cobra.Command {
@@ -89,7 +62,7 @@ func newListCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			path := fmt.Sprintf("/project/%d/inventory", projectID) + paginationQuery(cmd)
+			path := fmt.Sprintf("/project/%d/inventory", projectID) + cli.PaginationQuery(cmd)
 			resp, err := ctx.Client.Do(cmd.Context(), "GET", path, nil)
 			if err != nil {
 				return fmt.Errorf("list inventory: %w", err)
@@ -98,6 +71,7 @@ func newListCommand() *cobra.Command {
 			if err := api.DecodeJSON(resp, &inventories); err != nil {
 				return fmt.Errorf("decode inventory: %w", err)
 			}
+			inventories = cli.Paginate(inventories, cmd)
 			rows := make([][]string, len(inventories))
 			for i, inv := range inventories {
 				rows[i] = []string{
@@ -106,10 +80,10 @@ func newListCommand() *cobra.Command {
 					inv.Type,
 				}
 			}
-			return ctx.Printer.PrintTable([]string{"ID", "NAME", "TYPE"}, rows)
+			return ctx.Printer.PrintList([]string{"ID", "NAME", "TYPE"}, rows, inventories)
 		},
 	}
-	addPaginationFlags(cmd)
+	cli.AddPaginationFlags(cmd)
 	return cmd
 }
 
