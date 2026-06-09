@@ -88,6 +88,27 @@ func TestAPIPostWithTypedFields(t *testing.T) {
 	}
 }
 
+func TestAPIPostWithBooleanField(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/project/1/tasks", func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		// -F dry_run=true must arrive as a JSON boolean, not the string "true"
+		// (issue #74).
+		if dr, ok := body["dry_run"].(bool); !ok || !dr {
+			t.Fatalf("expected dry_run=true (bool), got %v (%T)", body["dry_run"], body["dry_run"])
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": 1})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	_, _, err := testutil.RunCommand(t, NewAPICommand(), "api", "POST", "/project/1/tasks", "--host", srv.URL, "-F", "template_id=1", "-F", "dry_run=true")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestAPIErrorResponse(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/missing", func(w http.ResponseWriter, r *http.Request) {
