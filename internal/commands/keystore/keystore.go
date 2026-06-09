@@ -23,6 +23,7 @@ import (
 
 	"github.com/moep90/semaphore-cli/internal/api"
 	"github.com/moep90/semaphore-cli/internal/cli"
+	"github.com/moep90/semaphore-cli/internal/output"
 )
 
 // NewKeystoreCommand builds the keystore command group.
@@ -179,11 +180,20 @@ func newCreateCommand() *cobra.Command {
 			if err := buildKeystoreSecret(cmd, keyType, body); err != nil {
 				return err
 			}
-			_, err = ctx.Client.Do(cmd.Context(), "POST", fmt.Sprintf("/project/%d/keys", projectID), body)
+			resp, err := ctx.Client.Do(cmd.Context(), "POST", fmt.Sprintf("/project/%d/keys", projectID), body)
 			if err != nil {
 				return fmt.Errorf("create keystore: %w", err)
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "✓ Created keystore %s\n", name)
+			// Decode into api.Keystore, which models only id/name/project_id/type,
+			// so any secret fields in the response are never surfaced.
+			var created api.Keystore
+			if err := api.DecodeJSON(resp, &created); err != nil {
+				return fmt.Errorf("create keystore: %w", err)
+			}
+			if ctx.Printer.Mode == output.ModeJSON || ctx.Printer.Mode == output.ModeYAML {
+				return ctx.Printer.Print(created)
+			}
+			ctx.Printer.PrintSuccess(fmt.Sprintf("Created keystore %s", name))
 			return nil
 		},
 	}

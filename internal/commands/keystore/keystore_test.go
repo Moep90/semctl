@@ -190,3 +190,37 @@ func TestDeleteCommand(t *testing.T) {
 	}
 	srv.AssertCalled(t, "DELETE", "/api/project/2/keys/9")
 }
+
+func TestCreateCommandJSON(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/project/2/keys", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id": 9, "name": "deploy-key", "project_id": 2, "type": "login_password",
+			// Secrets would never be echoed, but ensure the CLI doesn't surface them.
+			"login_password": map[string]any{"password": "s3cret"},
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	stdout, _, err := testutil.RunCommand(t, NewKeystoreCommand(), "keystore", "create",
+		"--name", "deploy-key", "--type", "login_password", "--login", "admin", "--password", "s3cret",
+		"--host", srv.URL, "--project", "2", "--output", "json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal([]byte(stdout), &out); err != nil {
+		t.Fatalf("expected JSON object for created keystore (issue #88), got: %s", stdout)
+	}
+	if out["id"] != float64(9) {
+		t.Fatalf("expected created keystore id 9, got: %v", out["id"])
+	}
+	if _, leaked := out["login_password"]; leaked {
+		t.Fatalf("secret fields must not be surfaced, got: %s", stdout)
+	}
+	if _, leaked := out["password"]; leaked {
+		t.Fatalf("secret fields must not be surfaced, got: %s", stdout)
+	}
+}

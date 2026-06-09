@@ -23,6 +23,7 @@ import (
 	"github.com/moep90/semaphore-cli/internal/api"
 	"github.com/moep90/semaphore-cli/internal/cli"
 	"github.com/moep90/semaphore-cli/internal/config"
+	"github.com/moep90/semaphore-cli/internal/output"
 	"github.com/moep90/semaphore-cli/internal/resolver"
 )
 
@@ -154,11 +155,18 @@ func newCreateCommand() *cobra.Command {
 			if cmd.Flags().Changed("max-parallel") {
 				body["max_parallel_tasks"] = maxParallel
 			}
-			_, err = ctx.Client.Do(cmd.Context(), "POST", "/projects", body)
+			resp, err := ctx.Client.Do(cmd.Context(), "POST", "/projects", body)
 			if err != nil {
 				return fmt.Errorf("create project: %w", err)
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "✓ Created project %s\n", name)
+			var created api.Project
+			if err := api.DecodeJSON(resp, &created); err != nil {
+				return fmt.Errorf("create project: %w", err)
+			}
+			if ctx.Printer.Mode == output.ModeJSON || ctx.Printer.Mode == output.ModeYAML {
+				return ctx.Printer.Print(created)
+			}
+			ctx.Printer.PrintSuccess(fmt.Sprintf("Created project %s", name))
 			return nil
 		},
 	}
