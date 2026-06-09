@@ -76,3 +76,77 @@ func TestGetCommand(t *testing.T) {
 		t.Fatalf("expected production in output, got: %s", stdout)
 	}
 }
+
+func TestCreateCommand(t *testing.T) {
+	srv := testutil.NewMockServer()
+	defer srv.Close()
+	srv.Expect("POST", "/api/project/2/environment", 201, "{}")
+
+	stdout, _, err := testutil.RunCommand(t, NewEnvironmentCommand(), "environment", "create", "--name", "staging", "--host", srv.URL(), "--project", "2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout, "Created environment staging") {
+		t.Fatalf("expected success message, got: %s", stdout)
+	}
+	srv.AssertCalled(t, "POST", "/api/project/2/environment")
+}
+
+func TestCreateCommandBody(t *testing.T) {
+	var got map[string]any
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/project/2/environment", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte("{}"))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	_, _, err := testutil.RunCommand(t, NewEnvironmentCommand(), "environment", "create",
+		"--name", "staging", "--json", `{"KEY":"value"}`, "--host", srv.URL, "--project", "2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got["name"] != "staging" {
+		t.Fatalf("expected name=staging, got: %v", got["name"])
+	}
+	if got["project_id"] != float64(2) {
+		t.Fatalf("expected project_id=2, got: %v", got["project_id"])
+	}
+	if got["json"] != `{"KEY":"value"}` {
+		t.Fatalf("expected json env string, got: %v", got["json"])
+	}
+}
+
+func TestUpdateCommand(t *testing.T) {
+	srv := testutil.NewMockServer()
+	defer srv.Close()
+	srv.ExpectJSON("GET", "/api/project/2/environment", 200, []api.Environment{{ID: 5, Name: "staging"}})
+	srv.Expect("PUT", "/api/project/2/environment/5", 204, "")
+
+	stdout, _, err := testutil.RunCommand(t, NewEnvironmentCommand(), "environment", "update", "staging", "--json", `{"K":"v"}`, "--host", srv.URL(), "--project", "2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout, "Updated environment staging") {
+		t.Fatalf("expected success message, got: %s", stdout)
+	}
+	srv.AssertCalled(t, "PUT", "/api/project/2/environment/5")
+}
+
+func TestDeleteCommand(t *testing.T) {
+	srv := testutil.NewMockServer()
+	defer srv.Close()
+	srv.ExpectJSON("GET", "/api/project/2/environment", 200, []api.Environment{{ID: 5, Name: "staging"}})
+	srv.Expect("DELETE", "/api/project/2/environment/5", 204, "")
+
+	stdout, _, err := testutil.RunCommand(t, NewEnvironmentCommand(), "environment", "delete", "staging", "--host", srv.URL(), "--project", "2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout, "Deleted environment staging") {
+		t.Fatalf("expected success message, got: %s", stdout)
+	}
+	srv.AssertCalled(t, "DELETE", "/api/project/2/environment/5")
+}

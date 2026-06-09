@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -25,6 +26,57 @@ import (
 	"github.com/moep90/semaphore-cli/internal/api"
 	"github.com/moep90/semaphore-cli/internal/testutil"
 )
+
+func TestListCommandPagination(t *testing.T) {
+	var gotQuery url.Values
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/projects":
+			_ = json.NewEncoder(w).Encode([]api.Project{{ID: 2, Name: "infra"}})
+		case "/api/project/2/tasks":
+			gotQuery = r.URL.Query()
+			_ = json.NewEncoder(w).Encode([]api.Task{{ID: 10, TemplateID: 7, Status: "success"}})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	_, _, err := testutil.RunCommand(t, NewTaskCommand(), "task", "list", "--limit", "20", "--page", "2", "--host", srv.URL, "--project", "2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := gotQuery.Get("count"); got != "20" {
+		t.Fatalf("expected count=20, got count=%q", got)
+	}
+	if got := gotQuery.Get("page"); got != "2" {
+		t.Fatalf("expected page=2, got page=%q", got)
+	}
+}
+
+func TestListCommandNoPagination(t *testing.T) {
+	gotRawQuery := "unset"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/projects":
+			_ = json.NewEncoder(w).Encode([]api.Project{{ID: 2, Name: "infra"}})
+		case "/api/project/2/tasks":
+			gotRawQuery = r.URL.RawQuery
+			_ = json.NewEncoder(w).Encode([]api.Task{{ID: 10, TemplateID: 7, Status: "success"}})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	_, _, err := testutil.RunCommand(t, NewTaskCommand(), "task", "list", "--host", srv.URL, "--project", "2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotRawQuery != "" {
+		t.Fatalf("expected no query params, got %q", gotRawQuery)
+	}
+}
 
 func TestListCommand(t *testing.T) {
 	mux := http.NewServeMux()
@@ -124,6 +176,52 @@ func TestRunCommandWithEnvInvResolution(t *testing.T) {
 	defer srv.Close()
 
 	stdout, _, err := testutil.RunCommand(t, NewTaskCommand(), "task", "run", "deploy-prod", "--host", srv.URL, "--project", "infra", "--environment", "production", "--inventory", "prod-hosts")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout, "Queued task 812") {
+		t.Fatalf("expected task queued message, got: %s", stdout)
+	}
+}
+
+func TestRunCommandWithAnsibleFlags(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]api.Project{{ID: 1, Name: "infra"}})
+	})
+	mux.HandleFunc("/api/project/1/templates", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]api.Template{{ID: 7, Name: "deploy-prod"}})
+	})
+	mux.HandleFunc("/api/project/1/tasks", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("expected POST, got %s", r.Method)
+		}
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body["tags"] != "deploy,restart" {
+			t.Fatalf("expected tags=deploy,restart, got %v", body["tags"])
+		}
+		if body["skip_tags"] != "slow" {
+			t.Fatalf("expected skip_tags=slow, got %v", body["skip_tags"])
+		}
+		if body["extra_vars"] != `{"version":"1.2.3"}` {
+			t.Fatalf("expected extra_vars={\"version\":\"1.2.3\"}, got %v", body["extra_vars"])
+		}
+		check, ok := body["check"].(bool)
+		if !ok || !check {
+			t.Fatalf("expected check=true (bool), got %v (type %T)", body["check"], body["check"])
+		}
+		_ = json.NewEncoder(w).Encode(api.Task{ID: 812, TemplateID: 7, Status: "running"})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	stdout, _, err := testutil.RunCommand(t, NewTaskCommand(), "task", "run", "deploy-prod",
+		"--host", srv.URL, "--project", "infra",
+		"--tags", "deploy,restart",
+		"--skip-tags", "slow",
+		"--extra-vars", `{"version":"1.2.3"}`,
+		"--check")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

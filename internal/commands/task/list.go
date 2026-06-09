@@ -17,6 +17,7 @@ package task
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strconv"
 
 	"github.com/spf13/cobra"
@@ -25,13 +26,40 @@ import (
 	"github.com/moep90/semaphore-cli/internal/cli"
 )
 
+// paginationQuery builds the "?count=<limit>&page=<page>" query string from the
+// --limit and --page flags, including only the flags that were explicitly set.
+// It returns an empty string when neither flag is set, preserving the
+// unpaginated request behavior.
+func paginationQuery(cmd *cobra.Command) string {
+	q := url.Values{}
+	if cmd.Flags().Changed("limit") {
+		limit, _ := cmd.Flags().GetInt("limit")
+		q.Set("count", strconv.Itoa(limit))
+	}
+	if cmd.Flags().Changed("page") {
+		page, _ := cmd.Flags().GetInt("page")
+		q.Set("page", strconv.Itoa(page))
+	}
+	if len(q) == 0 {
+		return ""
+	}
+	return "?" + q.Encode()
+}
+
+// addPaginationFlags registers the --limit and --page pagination flags.
+func addPaginationFlags(cmd *cobra.Command) {
+	cmd.Flags().Int("limit", 0, "Maximum number of items to return per page")
+	cmd.Flags().Int("page", 0, "Page number to retrieve (1-based)")
+}
+
 func newListCommand() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List tasks",
 		Long:  `Show tasks in the active project.`,
 		Example: `  semctl task list
-  semctl task list --json`,
+  semctl task list --json
+  semctl task list --limit 20 --page 2`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, err := cli.BuildCmdContext(cmd)
 			if err != nil {
@@ -41,7 +69,8 @@ func newListCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resp, err := ctx.Client.Do(cmd.Context(), "GET", fmt.Sprintf("/project/%d/tasks", projectID), nil)
+			path := fmt.Sprintf("/project/%d/tasks", projectID) + paginationQuery(cmd)
+			resp, err := ctx.Client.Do(cmd.Context(), "GET", path, nil)
 			if err != nil {
 				return fmt.Errorf("list tasks: %w", err)
 			}
@@ -62,6 +91,8 @@ func newListCommand() *cobra.Command {
 			return ctx.Printer.PrintTable([]string{"ID", "TEMPLATE", "STATUS", "MESSAGE", "CREATED"}, rows)
 		},
 	}
+	addPaginationFlags(cmd)
+	return cmd
 }
 
 func newLastCommand() *cobra.Command {

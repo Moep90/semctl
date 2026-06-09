@@ -32,6 +32,10 @@ func newRunCommand() *cobra.Command {
 	var limit string
 	var diff bool
 	var dryRun bool
+	var tags string
+	var skipTags string
+	var extraVars string
+	var check bool
 	var watch bool
 	var exitCode bool
 	cmd := &cobra.Command{
@@ -46,11 +50,17 @@ a status-specific exit code suitable for CI pipelines:
   1  task failed
   2  task stopped or canceled
   3  timeout
-  4  CLI or API error`,
+  4  CLI or API error
+
+Ansible execution can be tuned with --tags, --skip-tags, --extra-vars, and
+--check. --check enables Ansible check mode (a dry run on the target hosts),
+which is distinct from --dry-run.`,
 		Example: `  semctl task run deploy-prod --message "Deploy release 1.8.3"
   semctl task run deploy-prod --watch --exit-code
   semctl task run deploy-prod --message "hotfix" --branch release/1.8
-  semctl task run deploy-prod --environment 1 --inventory 2 --limit "web*" --diff --dry-run`,
+  semctl task run deploy-prod --environment 1 --inventory 2 --limit "web*" --diff --dry-run
+  semctl task run deploy-prod --tags deploy,restart --skip-tags slow
+  semctl task run deploy-prod --extra-vars '{"version":"1.2.3"}' --check`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, err := cli.BuildCmdContext(cmd)
@@ -91,6 +101,18 @@ a status-specific exit code suitable for CI pipelines:
 			if dryRun {
 				body.DryRun = true
 			}
+			if tags != "" {
+				body.Tags = tags
+			}
+			if skipTags != "" {
+				body.SkipTags = skipTags
+			}
+			if extraVars != "" {
+				body.ExtraVars = extraVars
+			}
+			if check {
+				body.Check = true
+			}
 
 			resp, err := ctx.Client.Do(cmd.Context(), "POST", fmt.Sprintf("/project/%d/tasks", projectID), body)
 			if err != nil {
@@ -119,6 +141,10 @@ a status-specific exit code suitable for CI pipelines:
 	cmd.Flags().StringVar(&limit, "limit", "", "Ansible limit pattern")
 	cmd.Flags().BoolVar(&diff, "diff", false, "Show diff mode")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Dry run mode")
+	cmd.Flags().StringVar(&tags, "tags", "", "Ansible tags to run (comma-separated)")
+	cmd.Flags().StringVar(&skipTags, "skip-tags", "", "Ansible tags to skip (comma-separated)")
+	cmd.Flags().StringVar(&extraVars, "extra-vars", "", "Ansible extra variables as a raw JSON object (e.g. '{\"version\":\"1.2.3\"}')")
+	cmd.Flags().BoolVar(&check, "check", false, "Ansible check mode (dry run on target hosts; distinct from --dry-run)")
 	cmd.Flags().BoolVar(&watch, "watch", false, "Wait for the task to complete")
 	cmd.Flags().BoolVar(&exitCode, "exit-code", false, "Return task status as process exit code")
 	return cmd

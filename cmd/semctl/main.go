@@ -33,6 +33,7 @@ import (
 	"github.com/moep90/semaphore-cli/internal/commands/keystore"
 	"github.com/moep90/semaphore-cli/internal/commands/ping"
 	"github.com/moep90/semaphore-cli/internal/commands/project"
+	"github.com/moep90/semaphore-cli/internal/commands/schedule"
 	"github.com/moep90/semaphore-cli/internal/commands/task"
 	"github.com/moep90/semaphore-cli/internal/commands/template"
 )
@@ -65,6 +66,7 @@ property of their respective owners.`,
 	root.AddCommand(config.NewConfigCommand())
 	root.AddCommand(api.NewAPICommand())
 	root.AddCommand(project.NewProjectCommand())
+	root.AddCommand(schedule.NewScheduleCommand())
 	root.AddCommand(template.NewTemplateCommand())
 	root.AddCommand(task.NewTaskCommand())
 	root.AddCommand(inventory.NewInventoryCommand())

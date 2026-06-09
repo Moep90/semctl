@@ -18,12 +18,64 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
 	"github.com/moep90/semaphore-cli/internal/api"
 	"github.com/moep90/semaphore-cli/internal/testutil"
 )
+
+func TestListCommandPagination(t *testing.T) {
+	var gotQuery url.Values
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/projects":
+			_ = json.NewEncoder(w).Encode([]api.Project{{ID: 2, Name: "infra"}})
+		case "/api/project/2/inventory":
+			gotQuery = r.URL.Query()
+			_ = json.NewEncoder(w).Encode([]api.Inventory{{ID: 1, Name: "prod-hosts", Type: "static"}})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	_, _, err := testutil.RunCommand(t, NewInventoryCommand(), "inventory", "list", "--limit", "20", "--page", "2", "--host", srv.URL, "--project", "2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := gotQuery.Get("count"); got != "20" {
+		t.Fatalf("expected count=20, got count=%q", got)
+	}
+	if got := gotQuery.Get("page"); got != "2" {
+		t.Fatalf("expected page=2, got page=%q", got)
+	}
+}
+
+func TestListCommandNoPagination(t *testing.T) {
+	gotRawQuery := "unset"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/projects":
+			_ = json.NewEncoder(w).Encode([]api.Project{{ID: 2, Name: "infra"}})
+		case "/api/project/2/inventory":
+			gotRawQuery = r.URL.RawQuery
+			_ = json.NewEncoder(w).Encode([]api.Inventory{{ID: 1, Name: "prod-hosts", Type: "static"}})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	_, _, err := testutil.RunCommand(t, NewInventoryCommand(), "inventory", "list", "--host", srv.URL, "--project", "2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotRawQuery != "" {
+		t.Fatalf("expected no query params, got %q", gotRawQuery)
+	}
+}
 
 func TestListCommand(t *testing.T) {
 	mux := http.NewServeMux()
@@ -75,4 +127,82 @@ func TestGetCommand(t *testing.T) {
 	if !strings.Contains(stdout, "dev-hosts") {
 		t.Fatalf("expected dev-hosts in output, got: %s", stdout)
 	}
+}
+
+func TestCreateCommand(t *testing.T) {
+	srv := testutil.NewMockServer()
+	defer srv.Close()
+	srv.Expect("POST", "/api/project/2/inventory", 201, "{}")
+
+	stdout, _, err := testutil.RunCommand(t, NewInventoryCommand(), "inventory", "create", "--name", "prod", "--host", srv.URL(), "--project", "2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout, "Created inventory prod") {
+		t.Fatalf("expected success message, got: %s", stdout)
+	}
+	srv.AssertCalled(t, "POST", "/api/project/2/inventory")
+}
+
+func TestCreateCommandBody(t *testing.T) {
+	var got map[string]any
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/project/2/inventory", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte("{}"))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	_, _, err := testutil.RunCommand(t, NewInventoryCommand(), "inventory", "create",
+		"--name", "prod", "--type", "static", "--inventory", "[web]\nhost1\n",
+		"--host", srv.URL, "--project", "2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got["name"] != "prod" {
+		t.Fatalf("expected name=prod, got: %v", got["name"])
+	}
+	if got["type"] != "static" {
+		t.Fatalf("expected type=static, got: %v", got["type"])
+	}
+	if got["project_id"] != float64(2) {
+		t.Fatalf("expected project_id=2, got: %v", got["project_id"])
+	}
+	if got["inventory"] != "[web]\nhost1\n" {
+		t.Fatalf("expected inventory content, got: %v", got["inventory"])
+	}
+}
+
+func TestUpdateCommand(t *testing.T) {
+	srv := testutil.NewMockServer()
+	defer srv.Close()
+	srv.ExpectJSON("GET", "/api/project/2/inventory", 200, []api.Inventory{{ID: 7, Name: "prod"}})
+	srv.Expect("PUT", "/api/project/2/inventory/7", 204, "")
+
+	stdout, _, err := testutil.RunCommand(t, NewInventoryCommand(), "inventory", "update", "prod", "--type", "file", "--host", srv.URL(), "--project", "2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout, "Updated inventory prod") {
+		t.Fatalf("expected success message, got: %s", stdout)
+	}
+	srv.AssertCalled(t, "PUT", "/api/project/2/inventory/7")
+}
+
+func TestDeleteCommand(t *testing.T) {
+	srv := testutil.NewMockServer()
+	defer srv.Close()
+	srv.ExpectJSON("GET", "/api/project/2/inventory", 200, []api.Inventory{{ID: 7, Name: "prod"}})
+	srv.Expect("DELETE", "/api/project/2/inventory/7", 204, "")
+
+	stdout, _, err := testutil.RunCommand(t, NewInventoryCommand(), "inventory", "delete", "prod", "--host", srv.URL(), "--project", "2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout, "Deleted inventory prod") {
+		t.Fatalf("expected success message, got: %s", stdout)
+	}
+	srv.AssertCalled(t, "DELETE", "/api/project/2/inventory/7")
 }
