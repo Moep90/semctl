@@ -220,3 +220,66 @@ func TestDeleteCommand(t *testing.T) {
 		t.Fatalf("expected success message, got: %s", stdout)
 	}
 }
+
+func TestCreateCommandActiveFlag(t *testing.T) {
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte("{}"))
+	}))
+	defer srv.Close()
+
+	// --active=false must create a disabled schedule.
+	_, _, err := testutil.RunCommand(t, NewScheduleCommand(), "schedule", "create",
+		"--template", "7", "--cron", "0 2 * * *", "--name", "nightly", "--active=false",
+		"--host", srv.URL, "--project", "2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got["active"] != false {
+		t.Fatalf("expected active=false, got: %v", got["active"])
+	}
+}
+
+func TestCreateCommandActiveDefaultsTrue(t *testing.T) {
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte("{}"))
+	}))
+	defer srv.Close()
+
+	_, _, err := testutil.RunCommand(t, NewScheduleCommand(), "schedule", "create",
+		"--template", "7", "--cron", "0 2 * * *", "--name", "nightly",
+		"--host", srv.URL, "--project", "2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got["active"] != true {
+		t.Fatalf("expected active=true by default, got: %v", got["active"])
+	}
+}
+
+func TestUpdateCommandActiveFlag(t *testing.T) {
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut {
+			_ = json.NewDecoder(r.Body).Decode(&got)
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		http.Error(w, "unexpected", http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	_, _, err := testutil.RunCommand(t, NewScheduleCommand(), "schedule", "update", "5",
+		"--active=false", "--host", srv.URL, "--project", "2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got["active"] != false {
+		t.Fatalf("expected active=false in PUT body, got: %v", got["active"])
+	}
+}
