@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -118,6 +119,12 @@ func newGetCommand() *cobra.Command {
 	}
 }
 
+// inlineEscapes interprets common backslash escape sequences in an inline
+// --inventory value so that, e.g., `[web]\nhost1` becomes a two-line INI body.
+// `\\` is handled first so a literal backslash can be preserved. Content read
+// from --inventory-file already contains real newlines and is left untouched.
+var inlineEscapes = strings.NewReplacer(`\\`, "\\", `\n`, "\n", `\t`, "\t", `\r`, "\r")
+
 // readInventoryContent returns the inventory content from --inventory-file (if
 // set) or --inventory.
 func readInventoryContent(cmd *cobra.Command) (string, bool, error) {
@@ -130,7 +137,7 @@ func readInventoryContent(cmd *cobra.Command) (string, bool, error) {
 	}
 	if cmd.Flags().Changed("inventory") {
 		content, _ := cmd.Flags().GetString("inventory")
-		return content, true, nil
+		return inlineEscapes.Replace(content), true, nil
 	}
 	return "", false, nil
 }
@@ -178,7 +185,7 @@ func newCreateCommand() *cobra.Command {
 	}
 	cmd.Flags().String("name", "", "Inventory name")
 	cmd.Flags().String("type", "static", "Inventory type (static, file, etc.)")
-	cmd.Flags().String("inventory", "", "Inventory content")
+	cmd.Flags().String("inventory", "", "Inventory content (\\n, \\t, \\r escapes are interpreted)")
 	cmd.Flags().String("inventory-file", "", "Read inventory content from a file")
 	_ = cmd.MarkFlagRequired("name")
 	return cmd
@@ -237,7 +244,7 @@ func newUpdateCommand() *cobra.Command {
 	}
 	cmd.Flags().String("name", "", "Inventory name")
 	cmd.Flags().String("type", "static", "Inventory type (static, file, etc.)")
-	cmd.Flags().String("inventory", "", "Inventory content")
+	cmd.Flags().String("inventory", "", "Inventory content (\\n, \\t, \\r escapes are interpreted)")
 	cmd.Flags().String("inventory-file", "", "Read inventory content from a file")
 	return cmd
 }

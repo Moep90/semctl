@@ -175,6 +175,28 @@ func TestCreateCommandBody(t *testing.T) {
 	}
 }
 
+func TestCreateInterpretsEscapeSequences(t *testing.T) {
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte("{}"))
+	}))
+	defer srv.Close()
+
+	// The raw string literal carries a literal backslash + n (as a shell would
+	// pass it), which must be stored as a real newline (issue #79).
+	_, _, err := testutil.RunCommand(t, NewInventoryCommand(), "inventory", "create",
+		"--name", "prod", "--type", "static", "--inventory", `[localhost]\nlocalhost ansible_connection=local`,
+		"--host", srv.URL, "--project", "2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got["inventory"] != "[localhost]\nlocalhost ansible_connection=local" {
+		t.Fatalf("expected literal \\n interpreted as newline, got: %q", got["inventory"])
+	}
+}
+
 func TestUpdateCommand(t *testing.T) {
 	srv := testutil.NewMockServer()
 	defer srv.Close()
