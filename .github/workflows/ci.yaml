@@ -124,3 +124,41 @@ jobs:
       - name: Stop Semaphore UI
         if: always()
         run: docker compose down -v
+
+  # Automated release: on every push to main, once test/lint/e2e pass, compute
+  # the next version from Conventional Commits and push a vX.Y.Z tag when there
+  # is a version-bumping change. The tag triggers the Release workflow
+  # (GoReleaser). Commits that don't bump the version (chore/docs/ci/test/
+  # refactor/build) produce no tag and no release.
+  release:
+    needs: [test, lint, e2e]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.2.2
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          # Use the PAT so the tag this job pushes triggers the Release workflow
+          # (a GITHUB_TOKEN push would not trigger downstream workflows).
+          token: ${{ secrets.TAP_GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+
+      - name: Install python-semantic-release
+        run: pip install "python-semantic-release==10.5.3"
+
+      - name: Tag release from conventional commits
+        env:
+          GH_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          echo "Next version: $(semantic-release version --print 2>/dev/null || echo 'no release')"
+          # Compute version + create/push the tag only. GoReleaser (Release
+          # workflow) builds artifacts and publishes the GitHub Release + notes.
+          semantic-release version --no-commit --no-changelog --no-vcs-release --skip-build --tag --push
