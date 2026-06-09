@@ -85,12 +85,10 @@ jobs:
           go-version-file: go.mod
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@55c2c1448f86e01eaae002a5a3a9624417608d84 # v6.5.2
+        uses: golangci/golangci-lint-action@db582008a42febd596419635a5abc9d9815daa9c # v9.2.1
         with:
-          # Pinned to the last v1 release to match .golangci.yml (v1 config) and
-          # the mise.toml pin. v2 rejects the current config syntax.
-          version: v1.64.8
-          args: --timeout=5m
+          # golangci-lint v2 (matches the v2 .golangci.yml and the mise.toml pin).
+          version: v2.12.2
 
   e2e:
     runs-on: ubuntu-latest

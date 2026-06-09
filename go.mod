@@ -1,6 +1,6 @@
 module github.com/moep90/semaphore-cli
 
-go 1.23.12
+go 1.25.11
 
 require (
 	github.com/olekukonko/tablewriter v1.1.4

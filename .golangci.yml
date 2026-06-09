@@ -12,31 +12,58 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+version: "2"
 run:
-  timeout: 5m
   tests: true
-
 linters:
+  # govet, staticcheck, ineffassign, errcheck, unused are in v2's default set.
+  # gosec and revive are not, so they stay explicit.
   enable:
-    - govet
-    - staticcheck
-    - ineffassign
-    - errcheck
     - gosec
-    - goimports
     - revive
-
-linters-settings:
-  goimports:
-    local-prefixes: github.com/moep90/semaphore-cli
-  revive:
-    rules:
-      - name: exported
-        arguments:
-          - "checkPrivateReceivers"
-          - "sayRepetitiveInsteadOfStutters"
-
-issues:
-  exclude-dirs:
-    - bin
-    - vendor
+  settings:
+    gosec:
+      # These rules are new in the gosec bundled with golangci-lint v2 and are
+      # by-design for this CLI; excluding them keeps behavior equivalent to the
+      # previous v1 setup:
+      #   G117 - login intentionally marshals a password field
+      #   G704 - the Semaphore host URL is user-supplied by design
+      #   G124 - cookies set by in-test mock servers don't need Secure/HttpOnly
+      excludes:
+        - G117
+        - G704
+        - G124
+    revive:
+      rules:
+        - name: exported
+          arguments:
+            - checkPrivateReceivers
+            - sayRepetitiveInsteadOfStutters
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - bin
+      - vendor
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/moep90/semaphore-cli
+  exclusions:
+    generated: lax
+    paths:
+      - bin
+      - vendor
+      - third_party$
+      - builtin$
+      - examples$
