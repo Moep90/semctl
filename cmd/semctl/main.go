@@ -23,6 +23,7 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
+	"github.com/moep90/semaphore-cli/internal/cli"
 	"github.com/moep90/semaphore-cli/internal/commands/api"
 	"github.com/moep90/semaphore-cli/internal/commands/auth"
 	"github.com/moep90/semaphore-cli/internal/commands/config"
@@ -36,18 +37,7 @@ import (
 	"github.com/moep90/semaphore-cli/internal/commands/template"
 )
 
-var (
-	version       = "dev"
-	hostFlag      string
-	projectFlag   string
-	outputFlag    string
-	profileFlag   string
-	jsonFlag      bool
-	noColor       bool
-	verboseFlag   bool
-	debugFlag     bool
-	noInteractive bool
-)
+var version = "dev"
 
 func main() {
 	root := &cobra.Command{
@@ -69,15 +59,7 @@ property of their respective owners.`,
 		},
 	}
 
-	root.PersistentFlags().StringVar(&hostFlag, "host", "", "Semaphore UI host URL")
-	root.PersistentFlags().StringVarP(&projectFlag, "project", "p", "", "Default project")
-	root.PersistentFlags().StringVarP(&outputFlag, "output", "o", "", "Output format (table, json, yaml, text)")
-	root.PersistentFlags().StringVar(&profileFlag, "profile", "", "Configuration profile")
-	root.PersistentFlags().BoolVar(&jsonFlag, "json", false, "Output in JSON format")
-	root.PersistentFlags().BoolVar(&noColor, "no-color", false, "Disable colored output")
-	root.PersistentFlags().BoolVar(&verboseFlag, "verbose", false, "Verbose output")
-	root.PersistentFlags().BoolVar(&debugFlag, "debug", false, "Debug output")
-	root.PersistentFlags().BoolVar(&noInteractive, "no-interactive", false, "Disable interactive prompts")
+	cli.RegisterGlobalFlags(root)
 
 	root.AddCommand(auth.NewAuthCommand())
 	root.AddCommand(config.NewConfigCommand())
@@ -92,12 +74,17 @@ property of their respective owners.`,
 	root.AddCommand(ping.NewPingCommand())
 
 	if err := root.Execute(); err != nil {
-		_ = formatError(err, os.Stderr)
+		_ = formatError(root, err, os.Stderr)
 		os.Exit(1)
 	}
 }
 
-func formatError(err error, w io.Writer) error {
+// formatError renders a top-level error honoring the --json / --output flags.
+// It reads the flags off the command so it stays in sync with how the rest of
+// the CLI resolves output mode, rather than relying on package-level globals.
+func formatError(cmd *cobra.Command, err error, w io.Writer) error {
+	jsonFlag, _ := cmd.PersistentFlags().GetBool("json")
+	outputFlag, _ := cmd.PersistentFlags().GetString("output")
 	if jsonFlag || outputFlag == "json" {
 		return json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 	}
