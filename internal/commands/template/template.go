@@ -35,6 +35,9 @@ func NewTemplateCommand() *cobra.Command {
 	}
 	cmd.AddCommand(newListCommand())
 	cmd.AddCommand(newGetCommand())
+	cmd.AddCommand(newDeleteCommand())
+	cmd.AddCommand(newCloneCommand())
+	cmd.AddCommand(newTasksCommand())
 	return cmd
 }
 
@@ -106,6 +109,103 @@ func newGetCommand() *cobra.Command {
 				return fmt.Errorf("decode template: %w", err)
 			}
 			return ctx.Printer.Print(template)
+		},
+	}
+}
+
+func newDeleteCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "delete <TEMPLATE>",
+		Short: "Delete a template",
+		Long:  `Delete a task template. Accepts a template ID or name.`,
+		Example: `  semctl template delete deploy-prod
+  semctl template delete 7`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, err := cli.BuildCmdContext(cmd)
+			if err != nil {
+				return err
+			}
+			templateID, err := ctx.ResolveTemplateID(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			projectID, _ := ctx.ResolveProjectID(cmd.Context())
+			_, err = ctx.Client.Do(cmd.Context(), "DELETE", fmt.Sprintf("/project/%d/templates/%d", projectID, templateID), nil)
+			if err != nil {
+				return fmt.Errorf("delete template: %w", err)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "✓ Deleted template %s\n", args[0])
+			return nil
+		},
+	}
+}
+
+func newCloneCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "clone <TEMPLATE> <NEW_NAME>",
+		Short: "Clone a template",
+		Long:  `Clone an existing task template with a new name. Accepts a template ID or name.`,
+		Example: `  semctl template clone deploy-prod deploy-staging
+  semctl template clone 7 deploy-staging`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, err := cli.BuildCmdContext(cmd)
+			if err != nil {
+				return err
+			}
+			templateID, err := ctx.ResolveTemplateID(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			projectID, _ := ctx.ResolveProjectID(cmd.Context())
+			body := map[string]string{"name": args[1]}
+			_, err = ctx.Client.Do(cmd.Context(), "POST", fmt.Sprintf("/project/%d/templates/%d/clone", projectID, templateID), body)
+			if err != nil {
+				return fmt.Errorf("clone template: %w", err)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "✓ Cloned template %s to %s\n", args[0], args[1])
+			return nil
+		},
+	}
+}
+
+func newTasksCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "tasks <TEMPLATE>",
+		Short: "List tasks for a template",
+		Long:  `Show all tasks associated with a template. Accepts a template ID or name.`,
+		Example: `  semctl template tasks deploy-prod
+  semctl template tasks 7`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, err := cli.BuildCmdContext(cmd)
+			if err != nil {
+				return err
+			}
+			templateID, err := ctx.ResolveTemplateID(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			projectID, _ := ctx.ResolveProjectID(cmd.Context())
+			resp, err := ctx.Client.Do(cmd.Context(), "GET", fmt.Sprintf("/project/%d/templates/%d/tasks", projectID, templateID), nil)
+			if err != nil {
+				return fmt.Errorf("list template tasks: %w", err)
+			}
+			var tasks []api.Task
+			if err := api.DecodeJSON(resp, &tasks); err != nil {
+				return fmt.Errorf("decode tasks: %w", err)
+			}
+			rows := make([][]string, len(tasks))
+			for i, t := range tasks {
+				rows[i] = []string{
+					strconv.Itoa(t.ID),
+					t.Status,
+					t.Message,
+					t.Created.Format("2006-01-02"),
+				}
+			}
+			return ctx.Printer.PrintTable([]string{"ID", "STATUS", "MESSAGE", "CREATED"}, rows)
 		},
 	}
 }

@@ -17,6 +17,7 @@ package resolver
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -193,6 +194,105 @@ func ResolveKeystore(ctx context.Context, client *api.Client, projectID int, idO
 	return resolveByName(idOrName, keystores, func(k api.Keystore) (int, string) {
 		return k.ID, k.Name
 	})
+}
+
+// ResolveRepository resolves a repository identifier to a repository ID within a project.
+func ResolveRepository(ctx context.Context, client *api.Client, projectID int, idOrName string) (int, error) {
+	if id, err := strconv.Atoi(idOrName); err == nil {
+		return id, nil
+	}
+
+	path := fmt.Sprintf("/project/%d/repositories", projectID)
+	var repositories []api.Repository
+	resp, err := client.Do(ctx, "GET", path, nil)
+	if err != nil {
+		return 0, fmt.Errorf("list repositories: %w", err)
+	}
+	if err := api.DecodeJSON(resp, &repositories); err != nil {
+		return 0, fmt.Errorf("decode repositories: %w", err)
+	}
+
+	return resolveByName(idOrName, repositories, func(r api.Repository) (int, string) {
+		return r.ID, r.Name
+	})
+}
+
+// ResolveSchedule resolves a schedule identifier to a schedule ID within a project.
+func ResolveSchedule(ctx context.Context, client *api.Client, projectID int, idOrName string) (int, error) {
+	if id, err := strconv.Atoi(idOrName); err == nil {
+		return id, nil
+	}
+
+	path := fmt.Sprintf("/project/%d/schedules", projectID)
+	var schedules []api.Schedule
+	resp, err := client.Do(ctx, "GET", path, nil)
+	if err != nil {
+		return 0, fmt.Errorf("list schedules: %w", err)
+	}
+	if err := api.DecodeJSON(resp, &schedules); err != nil {
+		return 0, fmt.Errorf("decode schedules: %w", err)
+	}
+
+	return resolveByName(idOrName, schedules, func(s api.Schedule) (int, string) {
+		return s.ID, s.Name
+	})
+}
+
+// ResolveUser resolves a user identifier to a user ID.
+func ResolveUser(ctx context.Context, client *api.Client, idOrName string) (int, error) {
+	if id, err := strconv.Atoi(idOrName); err == nil {
+		return id, nil
+	}
+
+	var users []api.User
+	resp, err := client.Do(ctx, "GET", "/users", nil)
+	if err != nil {
+		return 0, fmt.Errorf("list users: %w", err)
+	}
+	if err := api.DecodeJSON(resp, &users); err != nil {
+		return 0, fmt.Errorf("decode users: %w", err)
+	}
+
+	return resolveByName(idOrName, users, func(u api.User) (int, string) {
+		return u.ID, u.Name
+	})
+}
+
+// ResolveByID returns the first item whose numeric ID equals the given id.
+func ResolveByID[T any](id int, items []T, extract func(T) (int, string)) (T, bool) {
+	var zero T
+	for _, it := range items {
+		itemID, _ := extract(it)
+		if itemID == id {
+			return it, true
+		}
+	}
+	return zero, false
+}
+
+// FilterByPrefix returns items whose name starts with the given prefix.
+func FilterByPrefix[T any](prefix string, items []T, extract func(T) (int, string)) []T {
+	var result []T
+	lowerPrefix := strings.ToLower(prefix)
+	for _, it := range items {
+		_, name := extract(it)
+		if strings.HasPrefix(strings.ToLower(name), lowerPrefix) {
+			result = append(result, it)
+		}
+	}
+	return result
+}
+
+// SortByName sorts items by name ascending.
+func SortByName[T any](items []T, extract func(T) (int, string)) []T {
+	result := make([]T, len(items))
+	copy(result, items)
+	sort.Slice(result, func(i, j int) bool {
+		_, nameI := extract(result[i])
+		_, nameJ := extract(result[j])
+		return strings.ToLower(nameI) < strings.ToLower(nameJ)
+	})
+	return result
 }
 
 func ambiguousError[T any](idOrName string, items []T, extract func(T) (int, string)) error {

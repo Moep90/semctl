@@ -20,6 +20,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -164,6 +165,47 @@ func (c *Context) ResolveKeystoreID(ctx context.Context, idOrName string) (int, 
 		return 0, err
 	}
 	return resolver.ResolveKeystore(ctx, c.Client, projectID, idOrName)
+}
+
+// ResolveRepositoryID resolves a repository identifier to an ID.
+func (c *Context) ResolveRepositoryID(ctx context.Context, idOrName string) (int, error) {
+	projectID, err := c.ResolveProjectID(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return resolver.ResolveRepository(ctx, c.Client, projectID, idOrName)
+}
+
+// ResolveScheduleID resolves a schedule identifier to an ID.
+func (c *Context) ResolveScheduleID(ctx context.Context, idOrName string) (int, error) {
+	projectID, err := c.ResolveProjectID(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return resolver.ResolveSchedule(ctx, c.Client, projectID, idOrName)
+}
+
+// ResolveUserID resolves a user identifier to an ID.
+func (c *Context) ResolveUserID(ctx context.Context, idOrName string) (int, error) {
+	return resolver.ResolveUser(ctx, c.Client, idOrName)
+}
+
+// ValidateProjectConfigured returns an error if no project is set.
+func (c *Context) ValidateProjectConfigured() error {
+	if c.Project == "" {
+		return fmt.Errorf("no project configured; use --project or set SEMAPHORE_PROJECT, or run 'semctl project use'")
+	}
+	return nil
+}
+
+// CurrentProfileName returns the active profile name.
+func (c *Context) CurrentProfileName() string {
+	return firstNonEmpty(c.Config.CurrentProfile, os.Getenv("SEMAPHORE_PROFILE"))
+}
+
+// WithTimeout returns a derived context with the given timeout.
+func WithTimeout(ctx context.Context, duration time.Duration) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, duration)
 }
 
 // LatestTaskID returns the latest task ID in the active project.

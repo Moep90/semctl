@@ -38,6 +38,9 @@ func NewProjectCommand() *cobra.Command {
 	}
 	cmd.AddCommand(newListCommand())
 	cmd.AddCommand(newGetCommand())
+	cmd.AddCommand(newDeleteCommand())
+	cmd.AddCommand(newCreateCommand())
+	cmd.AddCommand(newSetCommand())
 	cmd.AddCommand(newUseCommand())
 	return cmd
 }
@@ -106,6 +109,106 @@ func newGetCommand() *cobra.Command {
 	}
 }
 
+func newDeleteCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "delete <PROJECT>",
+		Short: "Delete a project",
+		Long:  `Delete a project. Accepts a project ID or name.`,
+		Example: `  semctl project delete infra
+  semctl project delete 1`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, err := buildCmdContext(cmd)
+			if err != nil {
+				return err
+			}
+			projectID, err := resolver.ResolveProject(cmd.Context(), ctx.Client, args[0])
+			if err != nil {
+				return err
+			}
+			_, err = ctx.Client.Do(cmd.Context(), "DELETE", fmt.Sprintf("/project/%d", projectID), nil)
+			if err != nil {
+				return fmt.Errorf("delete project: %w", err)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "✓ Deleted project %s\n", args[0])
+			return nil
+		},
+	}
+}
+
+func newCreateCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create a project",
+		Long:  `Create a new project on the current host.`,
+		Example: `  semctl project create --name infra
+  semctl project create --name infra --max-parallel 10`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, err := buildCmdContext(cmd)
+			if err != nil {
+				return err
+			}
+			name, _ := cmd.Flags().GetString("name")
+			maxParallel, _ := cmd.Flags().GetInt("max-parallel")
+			body := map[string]any{"name": name}
+			if cmd.Flags().Changed("max-parallel") {
+				body["max_parallel_tasks"] = maxParallel
+			}
+			_, err = ctx.Client.Do(cmd.Context(), "POST", "/projects", body)
+			if err != nil {
+				return fmt.Errorf("create project: %w", err)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "✓ Created project %s\n", name)
+			return nil
+		},
+	}
+	cmd.Flags().String("name", "", "Project name")
+	cmd.Flags().Int("max-parallel", 0, "Maximum parallel tasks")
+	_ = cmd.MarkFlagRequired("name")
+	return cmd
+}
+
+func newSetCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "set <PROJECT>",
+		Short: "Set the default project for a profile",
+		Long:  `Store the default project name in the active profile so commands that require a project use it automatically. Also supports updating host and output.`,
+		Example: `  semctl project set infra
+  semctl project set infra --host https://semaphore.example.com --output json`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := config.Load()
+			if err != nil {
+				return fmt.Errorf("load config: %w", err)
+			}
+			name := cfg.CurrentProfile
+			if name == "" {
+				return fmt.Errorf("no active profile; create one with 'semctl config profile create'")
+			}
+			if cfg.Profiles[name] == nil {
+				return fmt.Errorf("active profile not found: %s", name)
+			}
+			cfg.Profiles[name].Project = args[0]
+			if cmd.Flags().Changed("host") {
+				host, _ := cmd.Flags().GetString("host")
+				cfg.Profiles[name].Host = host
+			}
+			if cmd.Flags().Changed("output") {
+				output, _ := cmd.Flags().GetString("output")
+				cfg.Profiles[name].DefaultOutput = output
+			}
+			if err := config.Save(cfg); err != nil {
+				return fmt.Errorf("save config: %w", err)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "✓ Set project to %s for profile %s\n", args[0], name)
+			return nil
+		},
+	}
+	cmd.Flags().String("host", "", "Update profile host")
+	cmd.Flags().StringP("output", "o", "", "Update profile default output")
+	return cmd
+}
+
 func newUseCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:     "use <PROJECT>",
@@ -129,7 +232,7 @@ func newUseCommand() *cobra.Command {
 			if err := config.Save(cfg); err != nil {
 				return fmt.Errorf("save config: %w", err)
 			}
-			fmt.Printf("✓ Set project to %s for profile %s\n", args[0], name)
+			fmt.Fprintf(cmd.OutOrStdout(), "✓ Set project to %s for profile %s\n", args[0], name)
 			return nil
 		},
 	}

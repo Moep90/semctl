@@ -20,7 +20,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -92,6 +94,122 @@ func TestGetCommand(t *testing.T) {
 	}
 	if out["name"] != "deploy-prod" {
 		t.Fatalf("unexpected name: %v", out["name"])
+	}
+}
+
+func TestDeleteCommand(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]api.Project{{ID: 1, Name: "infra"}})
+	})
+	mux.HandleFunc("/api/project/1/templates", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]api.Template{
+			{ID: 7, Name: "deploy-prod"},
+		})
+	})
+	mux.HandleFunc("/api/project/1/templates/7", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "DELETE" {
+			http.Error(w, "expected DELETE", http.StatusMethodNotAllowed)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	tmp := t.TempDir()
+	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
+	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
+
+	var buf bytes.Buffer
+	root := newTestRoot(&buf)
+	root.SetArgs([]string{"template", "delete", "deploy-prod", "--host", srv.URL, "--project", "infra", "--output", "json"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "Deleted template") {
+		t.Fatalf("expected success message, got: %s", buf.String())
+	}
+}
+
+func TestCloneCommand(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]api.Project{{ID: 1, Name: "infra"}})
+	})
+	mux.HandleFunc("/api/project/1/templates", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]api.Template{
+			{ID: 7, Name: "deploy-prod"},
+		})
+	})
+	mux.HandleFunc("/api/project/1/templates/7/clone", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "expected POST", http.StatusMethodNotAllowed)
+			return
+		}
+		var body map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if body["name"] != "deploy-staging" {
+			http.Error(w, "unexpected name", http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	tmp := t.TempDir()
+	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
+	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
+
+	var buf bytes.Buffer
+	root := newTestRoot(&buf)
+	root.SetArgs([]string{"template", "clone", "deploy-prod", "deploy-staging", "--host", srv.URL, "--project", "infra", "--output", "json"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "Cloned template") {
+		t.Fatalf("expected success message, got: %s", buf.String())
+	}
+}
+
+func TestTasksCommand(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]api.Project{{ID: 1, Name: "infra"}})
+	})
+	mux.HandleFunc("/api/project/1/templates", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]api.Template{
+			{ID: 7, Name: "deploy-prod"},
+		})
+	})
+	mux.HandleFunc("/api/project/1/templates/7/tasks", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]api.Task{
+			{ID: 101, TemplateID: 7, ProjectID: 1, Status: "success", Message: "deployed", Created: time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC)},
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	tmp := t.TempDir()
+	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
+	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
+
+	var buf bytes.Buffer
+	root := newTestRoot(&buf)
+	root.SetArgs([]string{"template", "tasks", "deploy-prod", "--host", srv.URL, "--project", "infra", "--output", "json"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var out []map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &out); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if len(out) != 1 {
+		t.Fatalf("expected 1 task, got %d", len(out))
 	}
 }
 
