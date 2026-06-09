@@ -173,3 +173,234 @@ func TestPrintError(t *testing.T) {
 		t.Fatalf("missing suggestion: %s", out)
 	}
 }
+
+func TestParseModeCSVTSV(t *testing.T) {
+	for _, tt := range []struct {
+		in      string
+		want    Mode
+		wantErr bool
+	}{
+		{"csv", ModeCSV, false},
+		{"tsv", ModeTSV, false},
+		{"CSV", ModeCSV, false},
+		{"TSV", ModeTSV, false},
+	} {
+		m, err := ParseMode(tt.in)
+		if tt.wantErr {
+			if err == nil {
+				t.Fatalf("expected error for %s", tt.in)
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatalf("unexpected error for %s: %v", tt.in, err)
+		}
+		if m != tt.want {
+			t.Fatalf("mode mismatch for %s: got %s, want %s", tt.in, m, tt.want)
+		}
+	}
+}
+
+func TestPrintCSV(t *testing.T) {
+	var buf bytes.Buffer
+	p := &Printer{Mode: ModeCSV, Stdout: &buf, Stderr: &buf}
+	if err := p.PrintCSV([]string{"ID", "NAME"}, [][]string{{"1", "infra"}, {"2", "app"}}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "ID,NAME") {
+		t.Fatalf("missing headers: %s", out)
+	}
+	if !strings.Contains(out, "1,infra") {
+		t.Fatalf("missing row: %s", out)
+	}
+}
+
+func TestPrintTSV(t *testing.T) {
+	var buf bytes.Buffer
+	p := &Printer{Mode: ModeTSV, Stdout: &buf, Stderr: &buf}
+	if err := p.PrintTSV([]string{"ID", "NAME"}, [][]string{{"1", "infra"}, {"2", "app"}}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "ID\tNAME") {
+		t.Fatalf("missing headers: %s", out)
+	}
+	if !strings.Contains(out, "1\tinfra") {
+		t.Fatalf("missing row: %s", out)
+	}
+}
+
+func TestPrintProgress(t *testing.T) {
+	var buf bytes.Buffer
+	p := &Printer{Mode: ModeText, Stdout: &buf, Stderr: &buf}
+	p.PrintProgress(4, 10, "downloading")
+	out := buf.String()
+	if !strings.Contains(out, "[####------]") {
+		t.Fatalf("missing progress bar: %s", out)
+	}
+	if !strings.Contains(out, "40%") {
+		t.Fatalf("missing percentage: %s", out)
+	}
+	if !strings.Contains(out, "downloading") {
+		t.Fatalf("missing label: %s", out)
+	}
+}
+
+func TestPrintWarningTTY(t *testing.T) {
+	var buf bytes.Buffer
+	p := &Printer{Mode: ModeText, Stdout: &buf, Stderr: &buf, IsTTY: true}
+	p.PrintWarning("disk nearly full")
+	out := buf.String()
+	if !strings.Contains(out, "warning: ") {
+		t.Fatalf("missing warning prefix: %s", out)
+	}
+	if !strings.Contains(out, "disk nearly full") {
+		t.Fatalf("missing message: %s", out)
+	}
+}
+
+func TestPrintWarningNotTTY(t *testing.T) {
+	var buf bytes.Buffer
+	p := &Printer{Mode: ModeText, Stdout: &buf, Stderr: &buf, IsTTY: false}
+	p.PrintWarning("disk nearly full")
+	out := buf.String()
+	if !strings.Contains(out, "warning: disk nearly full") {
+		t.Fatalf("unexpected output: %s", out)
+	}
+}
+
+func TestPrintWarningJSON(t *testing.T) {
+	var buf bytes.Buffer
+	p := &Printer{Mode: ModeJSON, Stdout: &buf, Stderr: &buf}
+	p.PrintWarning("disk nearly full")
+	var parsed map[string]string
+	if err := json.Unmarshal(buf.Bytes(), &parsed); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if parsed["warning"] != "disk nearly full" {
+		t.Fatalf("unexpected output: %v", parsed)
+	}
+}
+
+func TestPrintWarningYAML(t *testing.T) {
+	var buf bytes.Buffer
+	p := &Printer{Mode: ModeYAML, Stdout: &buf, Stderr: &buf}
+	p.PrintWarning("disk nearly full")
+	out := buf.String()
+	if !strings.Contains(out, "warning: disk nearly full") {
+		t.Fatalf("unexpected output: %s", out)
+	}
+}
+
+func TestPrintInfoTTY(t *testing.T) {
+	var buf bytes.Buffer
+	p := &Printer{Mode: ModeText, Stdout: &buf, Stderr: &buf, IsTTY: true}
+	p.PrintInfo("starting deploy")
+	out := buf.String()
+	if !strings.Contains(out, "info: ") {
+		t.Fatalf("missing info prefix: %s", out)
+	}
+	if !strings.Contains(out, "starting deploy") {
+		t.Fatalf("missing message: %s", out)
+	}
+}
+
+func TestPrintInfoNotTTY(t *testing.T) {
+	var buf bytes.Buffer
+	p := &Printer{Mode: ModeText, Stdout: &buf, Stderr: &buf, IsTTY: false}
+	p.PrintInfo("starting deploy")
+	out := buf.String()
+	if !strings.Contains(out, "info: starting deploy") {
+		t.Fatalf("unexpected output: %s", out)
+	}
+}
+
+func TestPrintInfoJSON(t *testing.T) {
+	var buf bytes.Buffer
+	p := &Printer{Mode: ModeJSON, Stdout: &buf, Stderr: &buf}
+	p.PrintInfo("starting deploy")
+	var parsed map[string]string
+	if err := json.Unmarshal(buf.Bytes(), &parsed); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if parsed["info"] != "starting deploy" {
+		t.Fatalf("unexpected output: %v", parsed)
+	}
+}
+
+func TestPrintInfoYAML(t *testing.T) {
+	var buf bytes.Buffer
+	p := &Printer{Mode: ModeYAML, Stdout: &buf, Stderr: &buf}
+	p.PrintInfo("starting deploy")
+	out := buf.String()
+	if !strings.Contains(out, "info: starting deploy") {
+		t.Fatalf("unexpected output: %s", out)
+	}
+}
+
+func TestPrintCompactJSON(t *testing.T) {
+	var buf bytes.Buffer
+	p := &Printer{Mode: ModeJSON, Stdout: &buf, Stderr: &buf, IndentJSON: false}
+	data := map[string]any{"id": 1, "name": "infra"}
+	if err := p.Print(data); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := strings.TrimSpace(buf.String())
+	if strings.Contains(out, "\n") {
+		t.Fatalf("expected compact JSON, got: %s", out)
+	}
+}
+
+func TestPrintIndentedJSON(t *testing.T) {
+	var buf bytes.Buffer
+	p := &Printer{Mode: ModeJSON, Stdout: &buf, Stderr: &buf, IndentJSON: true}
+	data := map[string]any{"id": 1, "name": "infra"}
+	if err := p.Print(data); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "\n") {
+		t.Fatalf("expected indented JSON, got: %s", out)
+	}
+}
+
+func TestPrintTableCSVMode(t *testing.T) {
+	var buf bytes.Buffer
+	p := &Printer{Mode: ModeCSV, Stdout: &buf, Stderr: &buf}
+	if err := p.PrintTable([]string{"ID", "NAME"}, [][]string{{"1", "infra"}}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "ID,NAME") {
+		t.Fatalf("missing csv headers: %s", out)
+	}
+}
+
+func TestPrintTableTSVMode(t *testing.T) {
+	var buf bytes.Buffer
+	p := &Printer{Mode: ModeTSV, Stdout: &buf, Stderr: &buf}
+	if err := p.PrintTable([]string{"ID", "NAME"}, [][]string{{"1", "infra"}}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "ID\tNAME") {
+		t.Fatalf("missing tsv headers: %s", out)
+	}
+}
+
+func TestPrintTableTruncate(t *testing.T) {
+	var buf bytes.Buffer
+	p := &Printer{Mode: ModeTable, Stdout: &buf, Stderr: &buf, TruncateTable: true}
+	long := strings.Repeat("a", 50)
+	if err := p.PrintTable([]string{"VAL"}, [][]string{{long}}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := buf.String()
+	if strings.Contains(out, strings.Repeat("a", 50)) {
+		t.Fatalf("expected truncation, got: %s", out)
+	}
+	if !strings.Contains(out, "...") {
+		t.Fatalf("missing ellipsis: %s", out)
+	}
+}

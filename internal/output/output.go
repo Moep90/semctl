@@ -15,6 +15,7 @@
 package output
 
 import (
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -37,14 +38,18 @@ const (
 	ModeJSON  Mode = "json"
 	ModeYAML  Mode = "yaml"
 	ModeText  Mode = "text"
+	ModeCSV   Mode = "csv"
+	ModeTSV   Mode = "tsv"
 )
 
 // Printer handles CLI output.
 type Printer struct {
-	Mode   Mode
-	Stdout io.Writer
-	Stderr io.Writer
-	IsTTY  bool
+	Mode          Mode
+	Stdout        io.Writer
+	Stderr        io.Writer
+	IsTTY         bool
+	IndentJSON    bool
+	TruncateTable bool
 }
 
 // New creates a default printer.
@@ -70,7 +75,9 @@ func (p *Printer) Print(data any) error {
 	switch p.Mode {
 	case ModeJSON:
 		enc := json.NewEncoder(p.Stdout)
-		enc.SetIndent("", "  ")
+		if p.IndentJSON {
+			enc.SetIndent("", "  ")
+		}
 		return enc.Encode(data)
 	case ModeYAML:
 		return yaml.NewEncoder(p.Stdout).Encode(data)
@@ -84,19 +91,23 @@ func (p *Printer) Print(data any) error {
 	case ModeTable:
 		// Tables require specific data shapes; PrintTable should be used instead.
 		enc := json.NewEncoder(p.Stdout)
-		enc.SetIndent("", "  ")
+		if p.IndentJSON {
+			enc.SetIndent("", "  ")
+		}
 		return enc.Encode(data)
 	default:
 		enc := json.NewEncoder(p.Stdout)
-		enc.SetIndent("", "  ")
+		if p.IndentJSON {
+			enc.SetIndent("", "  ")
+		}
 		return enc.Encode(data)
 	}
 }
 
 // PrintTable renders a table with headers and rows.
 func (p *Printer) PrintTable(headers []string, rows [][]string) error {
-	if p.Mode == ModeJSON {
-		// Convert to simple objects for JSON output.
+	if p.Mode == ModeJSON || p.Mode == ModeYAML {
+		// Convert to simple objects for JSON/YAML output.
 		var out []map[string]string
 		for _, row := range rows {
 			m := make(map[string]string, len(headers))
@@ -109,18 +120,11 @@ func (p *Printer) PrintTable(headers []string, rows [][]string) error {
 		}
 		return p.Print(out)
 	}
-	if p.Mode == ModeYAML {
-		var out []map[string]string
-		for _, row := range rows {
-			m := make(map[string]string, len(headers))
-			for i, h := range headers {
-				if i < len(row) {
-					m[h] = row[i]
-				}
-			}
-			out = append(out, m)
-		}
-		return p.Print(out)
+	if p.Mode == ModeCSV {
+		return p.PrintCSV(headers, rows)
+	}
+	if p.Mode == ModeTSV {
+		return p.PrintTSV(headers, rows)
 	}
 
 	table := tablewriter.NewWriter(p.Stdout)
@@ -128,6 +132,9 @@ func (p *Printer) PrintTable(headers []string, rows [][]string) error {
 	for _, row := range rows {
 		iface := make([]any, len(row))
 		for i, v := range row {
+			if p.TruncateTable && len(v) > 40 {
+				v = v[:37] + "..."
+			}
 			iface[i] = v
 		}
 		_ = table.Append(iface...)
@@ -174,6 +181,79 @@ func (p *Printer) PrintSuccess(msg string) {
 	}
 }
 
+// PrintCSV renders headers and rows as CSV.
+func (p *Printer) PrintCSV(headers []string, rows [][]string) error {
+	w := csv.NewWriter(p.Stdout)
+	if err := w.Write(headers); err != nil {
+		return err
+	}
+	for _, row := range rows {
+		if err := w.Write(row); err != nil {
+			return err
+		}
+	}
+	w.Flush()
+	return w.Error()
+}
+
+// PrintTSV renders headers and rows as tab-separated values.
+func (p *Printer) PrintTSV(headers []string, rows [][]string) error {
+	_, err := fmt.Fprintln(p.Stdout, strings.Join(headers, "\t"))
+	if err != nil {
+		return err
+	}
+	for _, row := range rows {
+		_, err := fmt.Fprintln(p.Stdout, strings.Join(row, "\t"))
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// PrintProgress prints a simple text progress bar.
+func (p *Printer) PrintProgress(current, total int, label string) {
+	if total <= 0 {
+		return
+	}
+	percent := (current * 100) / total
+	filled := (current * 10) / total
+	bar := strings.Repeat("#", filled) + strings.Repeat("-", 10-filled)
+	_, _ = fmt.Fprintf(p.Stdout, "[%s] %d%% %s\n", bar, percent, label)
+}
+
+// PrintWarning prints a warning message.
+func (p *Printer) PrintWarning(msg string) {
+	switch p.Mode {
+	case ModeJSON:
+		_ = json.NewEncoder(p.Stdout).Encode(map[string]string{"warning": msg})
+	case ModeYAML:
+		_ = yaml.NewEncoder(p.Stdout).Encode(map[string]string{"warning": msg})
+	default:
+		if p.IsTTY {
+			_, _ = fmt.Fprintf(p.Stdout, "\x1b[33mwarning: \x1b[0m%s\n", msg)
+			return
+		}
+		_, _ = fmt.Fprintf(p.Stdout, "warning: %s\n", msg)
+	}
+}
+
+// PrintInfo prints an informational message.
+func (p *Printer) PrintInfo(msg string) {
+	switch p.Mode {
+	case ModeJSON:
+		_ = json.NewEncoder(p.Stdout).Encode(map[string]string{"info": msg})
+	case ModeYAML:
+		_ = yaml.NewEncoder(p.Stdout).Encode(map[string]string{"info": msg})
+	default:
+		if p.IsTTY {
+			_, _ = fmt.Fprintf(p.Stdout, "\x1b[34minfo: \x1b[0m%s\n", msg)
+			return
+		}
+		_, _ = fmt.Fprintf(p.Stdout, "info: %s\n", msg)
+	}
+}
+
 func isTerminal(f *os.File) bool {
 	stat, err := f.Stat()
 	if err != nil {
@@ -198,6 +278,10 @@ func ParseMode(s string) (Mode, error) {
 		return ModeYAML, nil
 	case "text":
 		return ModeText, nil
+	case "csv":
+		return ModeCSV, nil
+	case "tsv":
+		return ModeTSV, nil
 	default:
 		return "", fmt.Errorf("unknown output mode: %s", s)
 	}

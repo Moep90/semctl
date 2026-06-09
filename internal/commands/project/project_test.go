@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -229,6 +230,111 @@ func TestGetCommand(t *testing.T) {
 	}
 	if !strings.Contains(out, "max_parallel_tasks") {
 		t.Fatalf("expected max_parallel_tasks in output, got: %s", out)
+	}
+}
+
+func TestDeleteCommand(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]api.Project{
+			{ID: 2, Name: "app"},
+		})
+	})
+	mux.HandleFunc("/api/project/2", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "DELETE" {
+			http.Error(w, "expected DELETE", http.StatusMethodNotAllowed)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	tmp := t.TempDir()
+	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
+	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
+
+	var buf bytes.Buffer
+	root := newTestRoot(&buf)
+	root.SetArgs([]string{"project", "delete", "app", "--host", srv.URL})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "Deleted project") {
+		t.Fatalf("expected success message, got: %s", buf.String())
+	}
+}
+
+func TestCreateCommand(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "expected POST", http.StatusMethodNotAllowed)
+			return
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if body["name"] != "infra" {
+			http.Error(w, "unexpected name", http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	tmp := t.TempDir()
+	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
+	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
+
+	var buf bytes.Buffer
+	root := newTestRoot(&buf)
+	root.SetArgs([]string{"project", "create", "--name", "infra", "--host", srv.URL})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "Created project") {
+		t.Fatalf("expected success message, got: %s", buf.String())
+	}
+}
+
+func TestSetCommand(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]api.Project{
+			{ID: 1, Name: "infra"},
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	tmp := t.TempDir()
+	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
+	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
+
+	// Seed a config with an active profile.
+	cfgPath := filepath.Join(tmp, "semctl", "config.yml")
+	_ = os.MkdirAll(filepath.Dir(cfgPath), 0750)
+	data := []byte("current_profile: test\nprofiles:\n  test:\n    host: " + srv.URL + "\n")
+	_ = os.WriteFile(cfgPath, data, 0600)
+
+	var buf bytes.Buffer
+	root := newTestRoot(&buf)
+	root.SetArgs([]string{"project", "set", "infra", "--host", srv.URL, "--output", "json"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "Set project") {
+		t.Fatalf("expected success message, got: %s", buf.String())
+	}
+
+	// Verify profile was updated.
+	read, _ := os.ReadFile(cfgPath)
+	if !strings.Contains(string(read), "output: json") && !strings.Contains(string(read), "default_output: json") {
+		t.Fatalf("expected profile output to be updated, got: %s", string(read))
 	}
 }
 

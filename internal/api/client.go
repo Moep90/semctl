@@ -23,6 +23,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strings"
 	"time"
 )
@@ -99,9 +100,96 @@ func (c *Client) verbosef(format string, args ...any) {
 	}
 }
 
+// WithBaseURL overrides the default base URL.
+func (c *Client) WithBaseURL(baseURL string) *Client {
+	c.baseURL = strings.TrimSuffix(baseURL, "/")
+	return c
+}
+
+// WithToken overrides the default token.
+func (c *Client) WithToken(token string) *Client {
+	c.token = token
+	return c
+}
+
+// Token returns the configured token.
+func (c *Client) Token() string {
+	return c.token
+}
+
+// BaseURL returns the configured base URL.
+func (c *Client) BaseURL() string {
+	return c.baseURL
+}
+
+// IsAuthenticated returns true if the client has a non-empty token.
+func (c *Client) IsAuthenticated() bool {
+	return c.token != ""
+}
+
+// Get performs an HTTP GET request against the API.
+func (c *Client) Get(ctx context.Context, path string) (*http.Response, error) {
+	return c.Do(ctx, http.MethodGet, path, nil)
+}
+
+// Post performs an HTTP POST request against the API.
+func (c *Client) Post(ctx context.Context, path string, body any) (*http.Response, error) {
+	return c.Do(ctx, http.MethodPost, path, body)
+}
+
+// Put performs an HTTP PUT request against the API.
+func (c *Client) Put(ctx context.Context, path string, body any) (*http.Response, error) {
+	return c.Do(ctx, http.MethodPut, path, body)
+}
+
+// Delete performs an HTTP DELETE request against the API.
+func (c *Client) Delete(ctx context.Context, path string) (*http.Response, error) {
+	return c.Do(ctx, http.MethodDelete, path, nil)
+}
+
 // Do performs an HTTP request against the API.
 func (c *Client) Do(ctx context.Context, method, path string, body any) (*http.Response, error) {
 	return c.DoWithHeaders(ctx, method, path, body, nil)
+}
+
+// FetchAllPages performs a paginated request and returns all pages by
+// automatically following Link headers and appending to dest.
+func (c *Client) FetchAllPages(ctx context.Context, path string, dest any) error {
+	rv := reflect.ValueOf(dest)
+	if rv.Kind() != reflect.Ptr || rv.Elem().Kind() != reflect.Slice {
+		return fmt.Errorf("dest must be a pointer to a slice")
+	}
+	elemType := rv.Elem().Type().Elem()
+	page := 1
+	for {
+		resp, err := c.Do(ctx, http.MethodGet, fmt.Sprintf("%s?page=%d", path, page), nil)
+		if err != nil {
+			return err
+		}
+		if resp.StatusCode >= 400 {
+			body, _ := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			return &Error{StatusCode: resp.StatusCode, Body: body}
+		}
+		pageSlice := reflect.New(reflect.SliceOf(elemType)).Interface()
+		if err := json.NewDecoder(resp.Body).Decode(pageSlice); err != nil {
+			_ = resp.Body.Close()
+			return err
+		}
+		_ = resp.Body.Close()
+		pageSliceVal := reflect.ValueOf(pageSlice).Elem()
+		destSlice := rv.Elem()
+		for i := 0; i < pageSliceVal.Len(); i++ {
+			destSlice = reflect.Append(destSlice, pageSliceVal.Index(i))
+		}
+		rv.Elem().Set(destSlice)
+		link := resp.Header.Get("Link")
+		if !strings.Contains(link, `rel="next"`) {
+			break
+		}
+		page++
+	}
+	return nil
 }
 
 // DoWithHeaders performs an HTTP request with additional headers.

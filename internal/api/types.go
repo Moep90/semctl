@@ -14,7 +14,10 @@
 
 package api
 
-import "time"
+import (
+	"errors"
+	"time"
+)
 
 // Project is a Semaphore UI project.
 type Project struct {
@@ -114,4 +117,63 @@ type Keystore struct {
 	Name      string `json:"name"`
 	ProjectID int    `json:"project_id,omitempty"`
 	Type      string `json:"type,omitempty"`
+}
+
+// Repository is a Semaphore UI repository.
+type Repository struct {
+	ID        int    `json:"id"`
+	Name      string `json:"name"`
+	ProjectID int    `json:"project_id,omitempty"`
+	GitURL    string `json:"git_url,omitempty"`
+	Branch    string `json:"branch,omitempty"`
+}
+
+// Schedule is a scheduled task template execution.
+type Schedule struct {
+	ID             int    `json:"id"`
+	Name           string `json:"name"`
+	ProjectID      int    `json:"project_id,omitempty"`
+	TemplateID     int    `json:"template_id,omitempty"`
+	CronExpression string `json:"cron_expression,omitempty"`
+	Enabled        bool   `json:"enabled,omitempty"`
+}
+
+// UserDetail extends User with additional metadata.
+type UserDetail struct {
+	User
+	Admin   bool      `json:"admin,omitempty"`
+	Created time.Time `json:"created"`
+}
+
+// TaskSummary is a lightweight representation of a task.
+type TaskSummary struct {
+	ID         int       `json:"id"`
+	TemplateID int       `json:"template_id"`
+	Status     string    `json:"status"`
+	Message    string    `json:"message,omitempty"`
+	Created    time.Time `json:"created"`
+}
+
+// ListOptions holds common list query options.
+type ListOptions struct {
+	Limit     int    `json:"limit,omitempty"`
+	Offset    int    `json:"offset,omitempty"`
+	SortField string `json:"sort_field,omitempty"`
+	SortOrder string `json:"sort_order,omitempty"`
+}
+
+// ValidateProjectID returns an error if the project ID is not positive.
+func ValidateProjectID(id int) error {
+	if id <= 0 {
+		return errors.New("project id must be greater than 0")
+	}
+	return nil
+}
+
+// ValidateTemplateID returns an error if the template ID is not positive.
+func ValidateTemplateID(id int) error {
+	if id <= 0 {
+		return errors.New("template id must be greater than 0")
+	}
+	return nil
 }

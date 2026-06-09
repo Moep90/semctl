@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -383,4 +384,254 @@ func TestDecodeJSONError(t *testing.T) {
 			t.Fatalf("unexpected status code: %d", e.StatusCode)
 		}
 	}
+}
+
+func TestClient_Get_Post_Put_Delete(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/items", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"action": "get"})
+		case http.MethodPost:
+			body, _ := io.ReadAll(r.Body)
+			var payload map[string]any
+			_ = json.Unmarshal(body, &payload)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"action": "post", "id": payload["id"]})
+		case http.MethodPut:
+			body, _ := io.ReadAll(r.Body)
+			var payload map[string]any
+			_ = json.Unmarshal(body, &payload)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"action": "put", "id": payload["id"]})
+		case http.MethodDelete:
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"action": "delete"})
+		default:
+			t.Fatalf("unexpected method: %s", r.Method)
+		}
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "tok")
+
+	// GET
+	resp, err := c.Get(context.Background(), "/items")
+	if err != nil {
+		t.Fatalf("unexpected GET error: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected GET status: %d", resp.StatusCode)
+	}
+
+	// POST
+	resp, err = c.Post(context.Background(), "/items", map[string]any{"id": 1})
+	if err != nil {
+		t.Fatalf("unexpected POST error: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected POST status: %d", resp.StatusCode)
+	}
+
+	// PUT
+	resp, err = c.Put(context.Background(), "/items", map[string]any{"id": 2})
+	if err != nil {
+		t.Fatalf("unexpected PUT error: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected PUT status: %d", resp.StatusCode)
+	}
+
+	// DELETE
+	resp, err = c.Delete(context.Background(), "/items")
+	if err != nil {
+		t.Fatalf("unexpected DELETE error: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected DELETE status: %d", resp.StatusCode)
+	}
+}
+
+func TestClient_FetchAllPages(t *testing.T) {
+	var pages atomic.Int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/items", func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query().Get("page")
+		page := 1
+		if q != "" {
+			var err error
+			page, err = strconv.Atoi(q)
+			if err != nil {
+				t.Fatalf("invalid page param: %s", q)
+			}
+		}
+		pages.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		if page < 3 {
+			w.Header().Set("Link", `<http://example.com/api/items?page=2>; rel="next"`)
+		}
+		_ = json.NewEncoder(w).Encode([]map[string]any{{"page": page}})
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "tok")
+	var dest []map[string]any
+	if err := c.FetchAllPages(context.Background(), "/items", &dest); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if pages.Load() != 3 {
+		t.Fatalf("expected 3 pages, got %d", pages.Load())
+	}
+	if len(dest) != 3 {
+		t.Fatalf("expected 3 dest items, got %d", len(dest))
+	}
+}
+
+func TestClient_IsAuthenticated_true_false(t *testing.T) {
+	tests := []struct {
+		name string
+		tok  string
+		want bool
+	}{
+		{"empty token", "", false},
+		{"non-empty token", "abc123", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewClient("https://example.com", tt.tok)
+			if got := c.IsAuthenticated(); got != tt.want {
+				t.Fatalf("IsAuthenticated() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestClient_WithRetryPolicy_custom_backoff(t *testing.T) {
+	var count atomic.Int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/items", func(w http.ResponseWriter, r *http.Request) {
+		if count.Add(1) < 2 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	customBackoff := []time.Duration{5 * time.Millisecond, 5 * time.Millisecond}
+	c := NewClient(srv.URL, "tok").WithRetryPolicy(2, customBackoff)
+	resp, err := c.Do(context.Background(), http.MethodGet, "/items", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected status: %d", resp.StatusCode)
+	}
+	if count.Load() != 2 {
+		t.Fatalf("expected 2 attempts, got %d", count.Load())
+	}
+}
+
+func TestClient_Token_and_BaseURL_getters(t *testing.T) {
+	c := NewClient("https://example.com/api/", "my-token")
+	if c.Token() != "my-token" {
+		t.Fatalf("Token() = %q, want %q", c.Token(), "my-token")
+	}
+	if c.BaseURL() != "https://example.com/api" {
+		t.Fatalf("BaseURL() = %q, want %q", c.BaseURL(), "https://example.com/api")
+	}
+}
+
+func TestDecodeJSON_nil_dest(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/ping", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "tok")
+	resp, err := c.Do(context.Background(), http.MethodGet, "/ping", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// nil dest should not panic and return nil
+	if err := DecodeJSON(resp, nil); err != nil {
+		t.Fatalf("unexpected error for nil dest: %v", err)
+	}
+}
+
+func TestRedactHeaders_partial(t *testing.T) {
+	h := http.Header{}
+	h.Set("Authorization", "Bearer secret")
+	h.Set("Cookie", "session=abc")
+	h.Set("X-Custom", "hello")
+	h.Set("Content-Type", "application/json")
+
+	safe := redactHeaders(h)
+	if safe.Get("Authorization") != "***REDACTED***" {
+		t.Fatalf("expected Authorization redacted, got %q", safe.Get("Authorization"))
+	}
+	if safe.Get("Cookie") != "***REDACTED***" {
+		t.Fatalf("expected Cookie redacted, got %q", safe.Get("Cookie"))
+	}
+	if safe.Get("X-Custom") != "hello" {
+		t.Fatalf("expected X-Custom preserved, got %q", safe.Get("X-Custom"))
+	}
+	if safe.Get("Content-Type") != "application/json" {
+		t.Fatalf("expected Content-Type preserved, got %q", safe.Get("Content-Type"))
+	}
+}
+
+func BenchmarkClient_Do(b *testing.B) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/ping", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "tok")
+	ctx := context.Background()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		resp, err := c.Do(ctx, http.MethodGet, "/ping", nil)
+		if err != nil {
+			b.Fatalf("unexpected error: %v", err)
+		}
+		_ = resp.Body.Close()
+	}
+}
+
+func FuzzIsRetryableStatus(f *testing.F) {
+	f.Add(200)
+	f.Add(404)
+	f.Add(429)
+	f.Add(500)
+	f.Add(502)
+	f.Add(503)
+	f.Add(504)
+	f.Fuzz(func(t *testing.T, code int) {
+		result := isRetryableStatus(code)
+		// fuzz test ensures the function doesn't panic; no fixed assertion
+		_ = result
+	})
 }
