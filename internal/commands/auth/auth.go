@@ -125,7 +125,7 @@ The host is required and must be an absolute URL (https:// or http://).`,
 				var stdinReader *bufio.Reader
 				readLine := func() (string, error) {
 					if stdinReader == nil {
-						stdinReader = bufio.NewReader(os.Stdin)
+						stdinReader = bufio.NewReader(cmd.InOrStdin())
 					}
 					return stdinReader.ReadString('\n')
 				}
@@ -138,7 +138,7 @@ The host is required and must be an absolute URL (https:// or http://).`,
 					return fmt.Errorf("--username is required when --no-interactive is set")
 				}
 				if username == "" {
-					fmt.Fprint(os.Stderr, "? Username: ")
+					fmt.Fprint(cmd.ErrOrStderr(), "? Username: ")
 					line, err := readLine()
 					if err != nil {
 						return fmt.Errorf("read username: %w", err)
@@ -157,14 +157,14 @@ The host is required and must be an absolute URL (https:// or http://).`,
 					return fmt.Errorf("--password is required when --no-interactive is set")
 				}
 				if password == "" {
-					fmt.Fprint(os.Stderr, "? Password: ")
+					fmt.Fprint(cmd.ErrOrStderr(), "? Password: ")
 					if term.IsTerminal(int(os.Stdin.Fd())) {
 						b, err := term.ReadPassword(int(os.Stdin.Fd()))
 						if err != nil {
 							return fmt.Errorf("read password: %w", err)
 						}
 						password = strings.TrimSpace(string(b))
-						_, _ = fmt.Fprintln(os.Stderr)
+						_, _ = fmt.Fprintln(cmd.ErrOrStderr())
 					} else {
 						line, err := readLine()
 						if err != nil {
@@ -204,26 +204,26 @@ The host is required and must be an absolute URL (https:// or http://).`,
 				if err != nil {
 					return fmt.Errorf("login failed: %w", err)
 				}
-				_, _ = fmt.Fprintf(os.Stdout, "✓ Authenticated as %s\n", user.Username)
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "✓ Authenticated as %s\n", user.Username)
 			} else {
 				tokenSource = "bearer"
 				if withToken {
-					data, err := io.ReadAll(os.Stdin)
+					data, err := io.ReadAll(cmd.InOrStdin())
 					if err != nil {
 						return fmt.Errorf("read token from stdin: %w", err)
 					}
 					token = strings.TrimSpace(string(data))
 				} else {
-					fmt.Fprint(os.Stderr, "? Token: ")
+					fmt.Fprint(cmd.ErrOrStderr(), "? Token: ")
 					if term.IsTerminal(int(os.Stdin.Fd())) {
 						b, err := term.ReadPassword(int(os.Stdin.Fd()))
 						if err != nil {
 							return fmt.Errorf("read token: %w", err)
 						}
 						token = strings.TrimSpace(string(b))
-						_, _ = fmt.Fprintln(os.Stderr)
+						_, _ = fmt.Fprintln(cmd.ErrOrStderr())
 					} else {
-						reader := bufio.NewReader(os.Stdin)
+						reader := bufio.NewReader(cmd.InOrStdin())
 						line, err := reader.ReadString('\n')
 						if err != nil {
 							return fmt.Errorf("read token: %w", err)
@@ -241,14 +241,14 @@ The host is required and must be an absolute URL (https:// or http://).`,
 				if err != nil {
 					return fmt.Errorf("login failed: %w", err)
 				}
-				_, _ = fmt.Fprintf(os.Stdout, "✓ Authenticated as %s\n", user.Username)
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "✓ Authenticated as %s\n", user.Username)
 			}
 
 			if err := auth.Store(host, token); err != nil {
 				if !plaintext {
 					return fmt.Errorf("could not store token in keyring (%s); re-run with --plaintext to store in config file", err)
 				}
-				_, _ = fmt.Fprintf(os.Stderr, "warning: could not store token in keyring (%s); storing in config file\n", err)
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not store token in keyring (%s); storing in config file\n", err)
 				cfg, _ := config.Load()
 				if cfg == nil {
 					cfg = config.DefaultConfig()
@@ -287,7 +287,7 @@ The host is required and must be an absolute URL (https:// or http://).`,
 				_ = config.Save(cfg)
 			}
 
-			_, _ = fmt.Fprintf(os.Stdout, "✓ Stored credentials for %s\n", host)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "✓ Stored credentials for %s\n", host)
 			return nil
 		},
 	}
@@ -329,16 +329,16 @@ func newLogoutCommand() *cobra.Command {
 			}
 
 			if err := auth.Delete(host); err != nil {
-				_, _ = fmt.Fprintf(os.Stderr, "warning: failed to remove token from keyring: %v\n", err)
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: failed to remove token from keyring: %v\n", err)
 			}
 			cfg, err := config.Load()
 			if err == nil && cfg.ActiveProfile() != nil && cfg.ActiveProfile().Host == host {
 				cfg.ActiveProfile().Token = ""
 				if saveErr := config.Save(cfg); saveErr != nil {
-					_, _ = fmt.Fprintf(os.Stderr, "warning: failed to clear profile token: %v\n", saveErr)
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: failed to clear profile token: %v\n", saveErr)
 				}
 			}
-			_, _ = fmt.Fprintf(os.Stdout, "✓ Logged out of %s\n", host)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "✓ Logged out of %s\n", host)
 			return nil
 		},
 	}
@@ -357,24 +357,24 @@ func newStatusCommand() *cobra.Command {
 			}
 			profile := cfg.ActiveProfile()
 			if profile == nil {
-				_, _ = fmt.Fprintln(os.Stdout, "not logged in to any host")
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), "not logged in to any host")
 				return nil
 			}
 
 			token := auth.GetToken(profile.Host, cfg)
 			if token == "" {
-				_, _ = fmt.Fprintf(os.Stdout, "logged in to %s (no token stored)\n", profile.Host)
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "logged in to %s (no token stored)\n", profile.Host)
 				return nil
 			}
 
 			client := api.NewClient(profile.Host, token)
 			user, err := auth.Login(cmd.Context(), client)
 			if err != nil {
-				_, _ = fmt.Fprintf(os.Stdout, "logged in to %s (token invalid)\n", profile.Host)
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "logged in to %s (token invalid)\n", profile.Host)
 				return nil
 			}
 
-			_, _ = fmt.Fprintf(os.Stdout, "✓ Logged in to %s as %s\n", profile.Host, user.Username)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "✓ Logged in to %s as %s\n", profile.Host, user.Username)
 			return nil
 		},
 	}
