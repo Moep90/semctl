@@ -333,3 +333,41 @@ func TestListCommandJSONSchema(t *testing.T) {
 		t.Fatalf("must not emit uppercase keys, got: %s", stdout)
 	}
 }
+
+func TestTasksCommandPagination(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/project/1/templates/7/tasks" {
+			_ = json.NewEncoder(w).Encode([]api.Task{{ID: 1}, {ID: 2}, {ID: 3}, {ID: 4}, {ID: 5}})
+			return
+		}
+		http.Error(w, "unexpected", http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	// --limit caps a template's task history (576+ runs is common).
+	stdout, _, err := testutil.RunCommand(t, NewTemplateCommand(), "template", "tasks", "7",
+		"--limit", "2", "--host", srv.URL, "--project", "1", "--output", "json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var page1 []map[string]any
+	if err := json.Unmarshal([]byte(stdout), &page1); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if len(page1) != 2 || page1[0]["id"] != float64(1) {
+		t.Fatalf("expected first 2 tasks, got: %s", stdout)
+	}
+
+	stdout2, _, err := testutil.RunCommand(t, NewTemplateCommand(), "template", "tasks", "7",
+		"--limit", "2", "--page", "2", "--host", srv.URL, "--project", "1", "--output", "json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var page2 []map[string]any
+	if err := json.Unmarshal([]byte(stdout2), &page2); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if len(page2) != 2 || page2[0]["id"] != float64(3) {
+		t.Fatalf("expected tasks 3,4 on page 2, got: %s", stdout2)
+	}
+}

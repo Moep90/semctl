@@ -208,12 +208,12 @@ func newCloneCommand() *cobra.Command {
 }
 
 func newTasksCommand() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "tasks <TEMPLATE>",
 		Short: "List tasks for a template",
-		Long:  `Show all tasks associated with a template. Accepts a template ID or name.`,
+		Long:  `Show tasks associated with a template. Accepts a template ID or name.`,
 		Example: `  semctl template tasks deploy-prod
-  semctl template tasks 7`,
+  semctl template tasks 7 --limit 10`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, err := cli.BuildCmdContext(cmd)
@@ -225,7 +225,8 @@ func newTasksCommand() *cobra.Command {
 				return err
 			}
 			projectID, _ := ctx.ResolveProjectID(cmd.Context())
-			resp, err := ctx.Client.Do(cmd.Context(), "GET", fmt.Sprintf("/project/%d/templates/%d/tasks", projectID, templateID), nil)
+			path := fmt.Sprintf("/project/%d/templates/%d/tasks", projectID, templateID) + cli.PaginationQuery(cmd)
+			resp, err := ctx.Client.Do(cmd.Context(), "GET", path, nil)
 			if err != nil {
 				return fmt.Errorf("list template tasks: %w", err)
 			}
@@ -233,6 +234,7 @@ func newTasksCommand() *cobra.Command {
 			if err := api.DecodeJSON(resp, &tasks); err != nil {
 				return fmt.Errorf("decode tasks: %w", err)
 			}
+			tasks = cli.Paginate(tasks, cmd)
 			rows := make([][]string, len(tasks))
 			for i, t := range tasks {
 				rows[i] = []string{
@@ -242,7 +244,9 @@ func newTasksCommand() *cobra.Command {
 					t.Created.Format("2006-01-02"),
 				}
 			}
-			return ctx.Printer.PrintTable([]string{"ID", "STATUS", "MESSAGE", "CREATED"}, rows)
+			return ctx.Printer.PrintList([]string{"ID", "STATUS", "MESSAGE", "CREATED"}, rows, tasks)
 		},
 	}
+	cli.AddPaginationFlags(cmd)
+	return cmd
 }
