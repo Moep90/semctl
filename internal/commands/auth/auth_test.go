@@ -195,3 +195,37 @@ func TestCookieLoginNoInteractiveMissingUsername(t *testing.T) {
 		t.Fatalf("expected error about missing username, got: %v", err)
 	}
 }
+
+// TestStatusCookieSession is a regression test for #42: `auth status` for a
+// cookie-based session must validate using the cookie scheme, not a bearer
+// token (which the server rejects), and must not report "session invalid".
+func TestStatusCookieSession(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/user", func(w http.ResponseWriter, r *http.Request) {
+		c, err := r.Cookie("semaphore")
+		if err != nil || c.Value != "sess123" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": 1, "username": "admin"})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	h := testutil.New(t)
+	cfg := config.DefaultConfig()
+	cfg.CurrentProfile = "default"
+	cfg.Profiles["default"] = &config.Profile{Host: srv.URL, Token: "sess123", TokenSource: "cookie"}
+	h.WriteConfig(t, cfg)
+
+	stdout, _, err := h.Run(t, NewAuthCommand(), "auth", "status")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout, "as admin (cookie)") {
+		t.Fatalf("expected valid cookie session in output, got: %s", stdout)
+	}
+	if strings.Contains(stdout, "invalid") {
+		t.Fatalf("cookie session should not be reported invalid, got: %s", stdout)
+	}
+}

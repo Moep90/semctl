@@ -179,3 +179,27 @@ func TestTasksCommand(t *testing.T) {
 		t.Fatalf("expected 1 task, got %d", len(out))
 	}
 }
+
+// TestGetCommandIncludesFullConfig is a regression test for #43: template get
+// must surface the *_id and behavior fields the API returns, not just the
+// display names.
+func TestGetCommandIncludesFullConfig(t *testing.T) {
+	srv := testutil.NewMockServer()
+	defer srv.Close()
+	srv.ExpectJSON("GET", "/api/project/2/templates/5", 200, api.Template{
+		ID: 5, Name: "deploy", ProjectID: 2, App: "ansible", Playbook: "deploy.yml",
+		InventoryID: 8, EnvironmentID: 6, RepositoryID: 1, ViewID: 3,
+		GitBranch: "main", AllowOverrideBranchInTask: true, SuppressSuccessAlert: true,
+	})
+
+	stdout, _, err := testutil.RunCommand(t, NewTemplateCommand(),
+		"template", "get", "5", "--host", srv.URL(), "--project", "2", "--output", "json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, want := range []string{"inventory_id", "environment_id", "repository_id", "git_branch", "allow_override_branch_in_task"} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("expected %q in template get output, got: %s", want, stdout)
+		}
+	}
+}
