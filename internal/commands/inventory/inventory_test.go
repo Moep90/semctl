@@ -18,12 +18,64 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
 	"github.com/moep90/semaphore-cli/internal/api"
 	"github.com/moep90/semaphore-cli/internal/testutil"
 )
+
+func TestListCommandPagination(t *testing.T) {
+	var gotQuery url.Values
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/projects":
+			_ = json.NewEncoder(w).Encode([]api.Project{{ID: 2, Name: "infra"}})
+		case "/api/project/2/inventory":
+			gotQuery = r.URL.Query()
+			_ = json.NewEncoder(w).Encode([]api.Inventory{{ID: 1, Name: "prod-hosts", Type: "static"}})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	_, _, err := testutil.RunCommand(t, NewInventoryCommand(), "inventory", "list", "--limit", "20", "--page", "2", "--host", srv.URL, "--project", "2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := gotQuery.Get("count"); got != "20" {
+		t.Fatalf("expected count=20, got count=%q", got)
+	}
+	if got := gotQuery.Get("page"); got != "2" {
+		t.Fatalf("expected page=2, got page=%q", got)
+	}
+}
+
+func TestListCommandNoPagination(t *testing.T) {
+	gotRawQuery := "unset"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/projects":
+			_ = json.NewEncoder(w).Encode([]api.Project{{ID: 2, Name: "infra"}})
+		case "/api/project/2/inventory":
+			gotRawQuery = r.URL.RawQuery
+			_ = json.NewEncoder(w).Encode([]api.Inventory{{ID: 1, Name: "prod-hosts", Type: "static"}})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	_, _, err := testutil.RunCommand(t, NewInventoryCommand(), "inventory", "list", "--host", srv.URL, "--project", "2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotRawQuery != "" {
+		t.Fatalf("expected no query params, got %q", gotRawQuery)
+	}
+}
 
 func TestListCommand(t *testing.T) {
 	mux := http.NewServeMux()

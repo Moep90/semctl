@@ -16,6 +16,7 @@ package template
 
 import (
 	"fmt"
+	"net/url"
 	"strconv"
 
 	"github.com/spf13/cobra"
@@ -23,6 +24,32 @@ import (
 	"github.com/moep90/semaphore-cli/internal/api"
 	"github.com/moep90/semaphore-cli/internal/cli"
 )
+
+// paginationQuery builds the "?count=<limit>&page=<page>" query string from the
+// --limit and --page flags, including only the flags that were explicitly set.
+// It returns an empty string when neither flag is set, preserving the
+// unpaginated request behavior.
+func paginationQuery(cmd *cobra.Command) string {
+	q := url.Values{}
+	if cmd.Flags().Changed("limit") {
+		limit, _ := cmd.Flags().GetInt("limit")
+		q.Set("count", strconv.Itoa(limit))
+	}
+	if cmd.Flags().Changed("page") {
+		page, _ := cmd.Flags().GetInt("page")
+		q.Set("page", strconv.Itoa(page))
+	}
+	if len(q) == 0 {
+		return ""
+	}
+	return "?" + q.Encode()
+}
+
+// addPaginationFlags registers the --limit and --page pagination flags.
+func addPaginationFlags(cmd *cobra.Command) {
+	cmd.Flags().Int("limit", 0, "Maximum number of items to return per page")
+	cmd.Flags().Int("page", 0, "Page number to retrieve (1-based)")
+}
 
 // NewTemplateCommand builds the template command group.
 func NewTemplateCommand() *cobra.Command {
@@ -42,12 +69,13 @@ func NewTemplateCommand() *cobra.Command {
 }
 
 func newListCommand() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List templates",
 		Long:  `Show all task templates in the active project.`,
 		Example: `  semctl template list
-  semctl template list --json`,
+  semctl template list --json
+  semctl template list --limit 20 --page 2`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, err := cli.BuildCmdContext(cmd)
 			if err != nil {
@@ -57,7 +85,8 @@ func newListCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resp, err := ctx.Client.Do(cmd.Context(), "GET", fmt.Sprintf("/project/%d/templates", projectID), nil)
+			path := fmt.Sprintf("/project/%d/templates", projectID) + paginationQuery(cmd)
+			resp, err := ctx.Client.Do(cmd.Context(), "GET", path, nil)
 			if err != nil {
 				return fmt.Errorf("list templates: %w", err)
 			}
@@ -80,6 +109,8 @@ func newListCommand() *cobra.Command {
 			return ctx.Printer.PrintTable([]string{"ID", "NAME", "APP", "PLAYBOOK", "REPOSITORY", "INVENTORY", "ENVIRONMENT"}, rows)
 		},
 	}
+	addPaginationFlags(cmd)
+	return cmd
 }
 
 func newGetCommand() *cobra.Command {
