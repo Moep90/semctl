@@ -274,3 +274,69 @@ func TestGetCommandFullFields(t *testing.T) {
 		t.Fatalf("expected become_key_id present and null, got ok=%v val=%v", ok, v)
 	}
 }
+
+func TestCreateCommandKeyFlags(t *testing.T) {
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte("{}"))
+	}))
+	defer srv.Close()
+
+	_, _, err := testutil.RunCommand(t, NewInventoryCommand(), "inventory", "create",
+		"--name", "prod", "--type", "static", "--ssh-key-id", "5", "--become-key-id", "7",
+		"--host", srv.URL, "--project", "2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got["ssh_key_id"] != float64(5) {
+		t.Fatalf("expected ssh_key_id=5, got: %v", got["ssh_key_id"])
+	}
+	if got["become_key_id"] != float64(7) {
+		t.Fatalf("expected become_key_id=7, got: %v", got["become_key_id"])
+	}
+}
+
+func TestCreateCommandBecomeKeyNull(t *testing.T) {
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte("{}"))
+	}))
+	defer srv.Close()
+
+	// `null` must send a JSON null so NOPASSWD hosts can clear become_key_id.
+	_, _, err := testutil.RunCommand(t, NewInventoryCommand(), "inventory", "create",
+		"--name", "prod", "--type", "static", "--become-key-id", "null",
+		"--host", srv.URL, "--project", "2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if v, ok := got["become_key_id"]; !ok || v != nil {
+		t.Fatalf("expected become_key_id present and null, got ok=%v val=%v", ok, v)
+	}
+}
+
+func TestUpdateCommandKeyFlags(t *testing.T) {
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut {
+			_ = json.NewDecoder(r.Body).Decode(&got)
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		http.Error(w, "unexpected", http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	_, _, err := testutil.RunCommand(t, NewInventoryCommand(), "inventory", "update", "3",
+		"--ssh-key-id", "9", "--host", srv.URL, "--project", "2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got["ssh_key_id"] != float64(9) {
+		t.Fatalf("expected ssh_key_id=9 in PUT body, got: %v", got["ssh_key_id"])
+	}
+}

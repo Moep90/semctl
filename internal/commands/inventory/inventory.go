@@ -125,6 +125,36 @@ func newGetCommand() *cobra.Command {
 // from --inventory-file already contains real newlines and is left untouched.
 var inlineEscapes = strings.NewReplacer(`\\`, "\\", `\n`, "\n", `\t`, "\t", `\r`, "\r")
 
+// addKeyFlags registers the --ssh-key-id and --become-key-id flags shared by
+// create and update. They are strings so that "null" can clear the association
+// (e.g. become_key_id must be null for NOPASSWD hosts).
+func addKeyFlags(cmd *cobra.Command) {
+	cmd.Flags().String("ssh-key-id", "", "SSH key (keystore) ID; 'null' to unset")
+	cmd.Flags().String("become-key-id", "", "Become key (login_password keystore) ID; 'null' to unset")
+}
+
+// applyKeyFlags maps any set --ssh-key-id/--become-key-id flags into body. A
+// value of "" or "null" sends a JSON null; otherwise the value must parse as an
+// integer. Flags that were not set are left out so update preserves them.
+func applyKeyFlags(cmd *cobra.Command, body map[string]any) error {
+	for flag, field := range map[string]string{"ssh-key-id": "ssh_key_id", "become-key-id": "become_key_id"} {
+		if !cmd.Flags().Changed(flag) {
+			continue
+		}
+		raw, _ := cmd.Flags().GetString(flag)
+		if raw == "" || strings.EqualFold(raw, "null") {
+			body[field] = nil
+			continue
+		}
+		id, err := strconv.Atoi(raw)
+		if err != nil {
+			return fmt.Errorf("--%s must be an integer or 'null'", flag)
+		}
+		body[field] = id
+	}
+	return nil
+}
+
 // readInventoryContent returns the inventory content from --inventory-file (if
 // set) or --inventory.
 func readInventoryContent(cmd *cobra.Command) (string, bool, error) {
@@ -172,6 +202,9 @@ func newCreateCommand() *cobra.Command {
 			if hasContent {
 				body["inventory"] = content
 			}
+			if err := applyKeyFlags(cmd, body); err != nil {
+				return err
+			}
 			resp, err := ctx.Client.Do(cmd.Context(), "POST", fmt.Sprintf("/project/%d/inventory", projectID), body)
 			if err != nil {
 				return fmt.Errorf("create inventory: %w", err)
@@ -187,6 +220,7 @@ func newCreateCommand() *cobra.Command {
 	cmd.Flags().String("type", "static", "Inventory type (static, file, etc.)")
 	cmd.Flags().String("inventory", "", "Inventory content (\\n, \\t, \\r escapes are interpreted)")
 	cmd.Flags().String("inventory-file", "", "Read inventory content from a file")
+	addKeyFlags(cmd)
 	_ = cmd.MarkFlagRequired("name")
 	return cmd
 }
@@ -231,6 +265,9 @@ func newUpdateCommand() *cobra.Command {
 			if hasContent {
 				body["inventory"] = content
 			}
+			if err := applyKeyFlags(cmd, body); err != nil {
+				return err
+			}
 			resp, err := ctx.Client.Do(cmd.Context(), "PUT", fmt.Sprintf("/project/%d/inventory/%d", projectID, inventoryID), body)
 			if err != nil {
 				return fmt.Errorf("update inventory: %w", err)
@@ -246,6 +283,7 @@ func newUpdateCommand() *cobra.Command {
 	cmd.Flags().String("type", "static", "Inventory type (static, file, etc.)")
 	cmd.Flags().String("inventory", "", "Inventory content (\\n, \\t, \\r escapes are interpreted)")
 	cmd.Flags().String("inventory-file", "", "Read inventory content from a file")
+	addKeyFlags(cmd)
 	return cmd
 }
 
