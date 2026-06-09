@@ -550,6 +550,31 @@ func TestStopCommandWait(t *testing.T) {
 	}
 }
 
+func TestStopCommandWaitWithoutForceWarns(t *testing.T) {
+	// --wait without --force can hang on a queued task (graceful stop never
+	// finalizes it). The command must warn instead of silently looking stuck.
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]api.Project{{ID: 1, Name: "infra"}})
+	})
+	mux.HandleFunc("/api/project/1/tasks/812/stop", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("/api/project/1/tasks/812", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(api.Task{ID: 812, Status: "stopped"})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	stdout, _, err := testutil.RunCommand(t, NewTaskCommand(), "task", "stop", "812", "--wait", "--interval", "10ms", "--host", srv.URL, "--project", "infra")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout, "graceful stop may never complete") {
+		t.Fatalf("expected graceful-wait warning, got: %s", stdout)
+	}
+}
+
 func TestStopCommandWaitTimeout(t *testing.T) {
 	// --timeout must abort the wait with an error if the task never stops.
 	mux := http.NewServeMux()
