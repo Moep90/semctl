@@ -29,12 +29,18 @@ func NewEnvironmentCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "environment",
 		Short: "Manage environments",
-		Long:  `List and inspect environments within the active project.`,
+		Long:  `List, inspect, create, update, and delete environments within the active project.`,
 		Example: `  semctl environment list
-  semctl environment get staging-env`,
+  semctl environment get staging-env
+  semctl environment create --name staging-env --json '{"KEY":"value"}'
+  semctl environment update staging-env --json '{"KEY":"new"}'
+  semctl environment delete staging-env`,
 	}
 	cmd.AddCommand(newListCommand())
 	cmd.AddCommand(newGetCommand())
+	cmd.AddCommand(newCreateCommand())
+	cmd.AddCommand(newUpdateCommand())
+	cmd.AddCommand(newDeleteCommand())
 	return cmd
 }
 
@@ -101,6 +107,120 @@ func newGetCommand() *cobra.Command {
 				return fmt.Errorf("decode environment: %w", err)
 			}
 			return ctx.Printer.Print(environment)
+		},
+	}
+}
+
+func newCreateCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create an environment",
+		Long:  `Create a new environment in the active project.`,
+		Example: `  semctl environment create --name staging-env
+  semctl environment create --name staging-env --json '{"KEY":"value"}'`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, err := cli.BuildCmdContext(cmd)
+			if err != nil {
+				return err
+			}
+			projectID, err := ctx.ResolveProjectID(cmd.Context())
+			if err != nil {
+				return err
+			}
+			name, _ := cmd.Flags().GetString("name")
+			envJSON, _ := cmd.Flags().GetString("json")
+			body := map[string]any{
+				"name":       name,
+				"project_id": projectID,
+				"json":       envJSON,
+			}
+			_, err = ctx.Client.Do(cmd.Context(), "POST", fmt.Sprintf("/project/%d/environment", projectID), body)
+			if err != nil {
+				return fmt.Errorf("create environment: %w", err)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "✓ Created environment %s\n", name)
+			return nil
+		},
+	}
+	cmd.Flags().String("name", "", "Environment name")
+	cmd.Flags().String("json", "{}", "Environment variables as a JSON string")
+	_ = cmd.MarkFlagRequired("name")
+	return cmd
+}
+
+func newUpdateCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "update <ENVIRONMENT>",
+		Short: "Update an environment",
+		Long:  `Update an environment. Accepts an environment ID or name. Only changed fields are sent.`,
+		Example: `  semctl environment update staging-env --json '{"KEY":"new"}'
+  semctl environment update 5 --name prod-env`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, err := cli.BuildCmdContext(cmd)
+			if err != nil {
+				return err
+			}
+			environmentID, err := ctx.ResolveEnvironmentID(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			projectID, err := ctx.ResolveProjectID(cmd.Context())
+			if err != nil {
+				return err
+			}
+			body := map[string]any{
+				"id":         environmentID,
+				"project_id": projectID,
+			}
+			if cmd.Flags().Changed("name") {
+				name, _ := cmd.Flags().GetString("name")
+				body["name"] = name
+			}
+			if cmd.Flags().Changed("json") {
+				envJSON, _ := cmd.Flags().GetString("json")
+				body["json"] = envJSON
+			}
+			_, err = ctx.Client.Do(cmd.Context(), "PUT", fmt.Sprintf("/project/%d/environment/%d", projectID, environmentID), body)
+			if err != nil {
+				return fmt.Errorf("update environment: %w", err)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "✓ Updated environment %s\n", args[0])
+			return nil
+		},
+	}
+	cmd.Flags().String("name", "", "Environment name")
+	cmd.Flags().String("json", "{}", "Environment variables as a JSON string")
+	return cmd
+}
+
+func newDeleteCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "delete <ENVIRONMENT>",
+		Short: "Delete an environment",
+		Long:  `Delete an environment. Accepts an environment ID or name.`,
+		Example: `  semctl environment delete staging-env
+  semctl environment delete 5`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, err := cli.BuildCmdContext(cmd)
+			if err != nil {
+				return err
+			}
+			environmentID, err := ctx.ResolveEnvironmentID(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			projectID, err := ctx.ResolveProjectID(cmd.Context())
+			if err != nil {
+				return err
+			}
+			_, err = ctx.Client.Do(cmd.Context(), "DELETE", fmt.Sprintf("/project/%d/environment/%d", projectID, environmentID), nil)
+			if err != nil {
+				return fmt.Errorf("delete environment: %w", err)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "✓ Deleted environment %s\n", args[0])
+			return nil
 		},
 	}
 }

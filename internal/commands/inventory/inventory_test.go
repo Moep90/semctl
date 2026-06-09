@@ -128,3 +128,81 @@ func TestGetCommand(t *testing.T) {
 		t.Fatalf("expected dev-hosts in output, got: %s", stdout)
 	}
 }
+
+func TestCreateCommand(t *testing.T) {
+	srv := testutil.NewMockServer()
+	defer srv.Close()
+	srv.Expect("POST", "/api/project/2/inventory", 201, "{}")
+
+	stdout, _, err := testutil.RunCommand(t, NewInventoryCommand(), "inventory", "create", "--name", "prod", "--host", srv.URL(), "--project", "2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout, "Created inventory prod") {
+		t.Fatalf("expected success message, got: %s", stdout)
+	}
+	srv.AssertCalled(t, "POST", "/api/project/2/inventory")
+}
+
+func TestCreateCommandBody(t *testing.T) {
+	var got map[string]any
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/project/2/inventory", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte("{}"))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	_, _, err := testutil.RunCommand(t, NewInventoryCommand(), "inventory", "create",
+		"--name", "prod", "--type", "static", "--inventory", "[web]\nhost1\n",
+		"--host", srv.URL, "--project", "2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got["name"] != "prod" {
+		t.Fatalf("expected name=prod, got: %v", got["name"])
+	}
+	if got["type"] != "static" {
+		t.Fatalf("expected type=static, got: %v", got["type"])
+	}
+	if got["project_id"] != float64(2) {
+		t.Fatalf("expected project_id=2, got: %v", got["project_id"])
+	}
+	if got["inventory"] != "[web]\nhost1\n" {
+		t.Fatalf("expected inventory content, got: %v", got["inventory"])
+	}
+}
+
+func TestUpdateCommand(t *testing.T) {
+	srv := testutil.NewMockServer()
+	defer srv.Close()
+	srv.ExpectJSON("GET", "/api/project/2/inventory", 200, []api.Inventory{{ID: 7, Name: "prod"}})
+	srv.Expect("PUT", "/api/project/2/inventory/7", 204, "")
+
+	stdout, _, err := testutil.RunCommand(t, NewInventoryCommand(), "inventory", "update", "prod", "--type", "file", "--host", srv.URL(), "--project", "2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout, "Updated inventory prod") {
+		t.Fatalf("expected success message, got: %s", stdout)
+	}
+	srv.AssertCalled(t, "PUT", "/api/project/2/inventory/7")
+}
+
+func TestDeleteCommand(t *testing.T) {
+	srv := testutil.NewMockServer()
+	defer srv.Close()
+	srv.ExpectJSON("GET", "/api/project/2/inventory", 200, []api.Inventory{{ID: 7, Name: "prod"}})
+	srv.Expect("DELETE", "/api/project/2/inventory/7", 204, "")
+
+	stdout, _, err := testutil.RunCommand(t, NewInventoryCommand(), "inventory", "delete", "prod", "--host", srv.URL(), "--project", "2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout, "Deleted inventory prod") {
+		t.Fatalf("expected success message, got: %s", stdout)
+	}
+	srv.AssertCalled(t, "DELETE", "/api/project/2/inventory/7")
+}

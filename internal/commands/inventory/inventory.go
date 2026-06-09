@@ -17,6 +17,7 @@ package inventory
 import (
 	"fmt"
 	"net/url"
+	"os"
 	"strconv"
 
 	"github.com/spf13/cobra"
@@ -56,12 +57,18 @@ func NewInventoryCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "inventory",
 		Short: "Manage inventories",
-		Long:  `List and inspect inventories within the active project.`,
+		Long:  `List, inspect, create, update, and delete inventories within the active project.`,
 		Example: `  semctl inventory list
-  semctl inventory get prod-hosts`,
+  semctl inventory get prod-hosts
+  semctl inventory create --name prod-hosts --inventory-file hosts.ini
+  semctl inventory update prod-hosts --type file
+  semctl inventory delete prod-hosts`,
 	}
 	cmd.AddCommand(newListCommand())
 	cmd.AddCommand(newGetCommand())
+	cmd.AddCommand(newCreateCommand())
+	cmd.AddCommand(newUpdateCommand())
+	cmd.AddCommand(newDeleteCommand())
 	return cmd
 }
 
@@ -133,6 +140,155 @@ func newGetCommand() *cobra.Command {
 				return fmt.Errorf("decode inventory: %w", err)
 			}
 			return ctx.Printer.Print(inventory)
+		},
+	}
+}
+
+// readInventoryContent returns the inventory content from --inventory-file (if
+// set) or --inventory.
+func readInventoryContent(cmd *cobra.Command) (string, bool, error) {
+	if file, _ := cmd.Flags().GetString("inventory-file"); file != "" {
+		data, err := os.ReadFile(file)
+		if err != nil {
+			return "", false, fmt.Errorf("read inventory file: %w", err)
+		}
+		return string(data), true, nil
+	}
+	if cmd.Flags().Changed("inventory") {
+		content, _ := cmd.Flags().GetString("inventory")
+		return content, true, nil
+	}
+	return "", false, nil
+}
+
+func newCreateCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create an inventory",
+		Long:  `Create a new inventory in the active project.`,
+		Example: `  semctl inventory create --name prod-hosts --inventory-file hosts.ini
+  semctl inventory create --name dynamic --type file`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, err := cli.BuildCmdContext(cmd)
+			if err != nil {
+				return err
+			}
+			projectID, err := ctx.ResolveProjectID(cmd.Context())
+			if err != nil {
+				return err
+			}
+			name, _ := cmd.Flags().GetString("name")
+			invType, _ := cmd.Flags().GetString("type")
+			content, hasContent, err := readInventoryContent(cmd)
+			if err != nil {
+				return err
+			}
+			body := map[string]any{
+				"name":       name,
+				"project_id": projectID,
+				"type":       invType,
+			}
+			if hasContent {
+				body["inventory"] = content
+			}
+			_, err = ctx.Client.Do(cmd.Context(), "POST", fmt.Sprintf("/project/%d/inventory", projectID), body)
+			if err != nil {
+				return fmt.Errorf("create inventory: %w", err)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "✓ Created inventory %s\n", name)
+			return nil
+		},
+	}
+	cmd.Flags().String("name", "", "Inventory name")
+	cmd.Flags().String("type", "static", "Inventory type (static, file, etc.)")
+	cmd.Flags().String("inventory", "", "Inventory content")
+	cmd.Flags().String("inventory-file", "", "Read inventory content from a file")
+	_ = cmd.MarkFlagRequired("name")
+	return cmd
+}
+
+func newUpdateCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "update <INVENTORY>",
+		Short: "Update an inventory",
+		Long:  `Update an inventory. Accepts an inventory ID or name. Only changed fields are sent.`,
+		Example: `  semctl inventory update prod-hosts --type file
+  semctl inventory update 3 --inventory-file hosts.ini`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, err := cli.BuildCmdContext(cmd)
+			if err != nil {
+				return err
+			}
+			inventoryID, err := ctx.ResolveInventoryID(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			projectID, err := ctx.ResolveProjectID(cmd.Context())
+			if err != nil {
+				return err
+			}
+			body := map[string]any{
+				"id":         inventoryID,
+				"project_id": projectID,
+			}
+			if cmd.Flags().Changed("name") {
+				name, _ := cmd.Flags().GetString("name")
+				body["name"] = name
+			}
+			if cmd.Flags().Changed("type") {
+				invType, _ := cmd.Flags().GetString("type")
+				body["type"] = invType
+			}
+			content, hasContent, err := readInventoryContent(cmd)
+			if err != nil {
+				return err
+			}
+			if hasContent {
+				body["inventory"] = content
+			}
+			_, err = ctx.Client.Do(cmd.Context(), "PUT", fmt.Sprintf("/project/%d/inventory/%d", projectID, inventoryID), body)
+			if err != nil {
+				return fmt.Errorf("update inventory: %w", err)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "✓ Updated inventory %s\n", args[0])
+			return nil
+		},
+	}
+	cmd.Flags().String("name", "", "Inventory name")
+	cmd.Flags().String("type", "static", "Inventory type (static, file, etc.)")
+	cmd.Flags().String("inventory", "", "Inventory content")
+	cmd.Flags().String("inventory-file", "", "Read inventory content from a file")
+	return cmd
+}
+
+func newDeleteCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "delete <INVENTORY>",
+		Short: "Delete an inventory",
+		Long:  `Delete an inventory. Accepts an inventory ID or name.`,
+		Example: `  semctl inventory delete prod-hosts
+  semctl inventory delete 3`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, err := cli.BuildCmdContext(cmd)
+			if err != nil {
+				return err
+			}
+			inventoryID, err := ctx.ResolveInventoryID(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			projectID, err := ctx.ResolveProjectID(cmd.Context())
+			if err != nil {
+				return err
+			}
+			_, err = ctx.Client.Do(cmd.Context(), "DELETE", fmt.Sprintf("/project/%d/inventory/%d", projectID, inventoryID), nil)
+			if err != nil {
+				return fmt.Errorf("delete inventory: %w", err)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "✓ Deleted inventory %s\n", args[0])
+			return nil
 		},
 	}
 }
