@@ -132,6 +132,52 @@ func TestRunCommandWithEnvInvResolution(t *testing.T) {
 	}
 }
 
+func TestRunCommandWithAnsibleFlags(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]api.Project{{ID: 1, Name: "infra"}})
+	})
+	mux.HandleFunc("/api/project/1/templates", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]api.Template{{ID: 7, Name: "deploy-prod"}})
+	})
+	mux.HandleFunc("/api/project/1/tasks", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("expected POST, got %s", r.Method)
+		}
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body["tags"] != "deploy,restart" {
+			t.Fatalf("expected tags=deploy,restart, got %v", body["tags"])
+		}
+		if body["skip_tags"] != "slow" {
+			t.Fatalf("expected skip_tags=slow, got %v", body["skip_tags"])
+		}
+		if body["extra_vars"] != `{"version":"1.2.3"}` {
+			t.Fatalf("expected extra_vars={\"version\":\"1.2.3\"}, got %v", body["extra_vars"])
+		}
+		check, ok := body["check"].(bool)
+		if !ok || !check {
+			t.Fatalf("expected check=true (bool), got %v (type %T)", body["check"], body["check"])
+		}
+		_ = json.NewEncoder(w).Encode(api.Task{ID: 812, TemplateID: 7, Status: "running"})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	stdout, _, err := testutil.RunCommand(t, NewTaskCommand(), "task", "run", "deploy-prod",
+		"--host", srv.URL, "--project", "infra",
+		"--tags", "deploy,restart",
+		"--skip-tags", "slow",
+		"--extra-vars", `{"version":"1.2.3"}`,
+		"--check")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout, "Queued task 812") {
+		t.Fatalf("expected task queued message, got: %s", stdout)
+	}
+}
+
 func TestStopCommand(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {

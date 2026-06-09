@@ -116,6 +116,10 @@ type TaskRunRequest struct {
 	Limit         string `json:"limit,omitempty"`
 	Diff          bool   `json:"diff,omitempty"`
 	DryRun        bool   `json:"dry_run,omitempty"`
+	Tags          string `json:"tags,omitempty"`
+	SkipTags      string `json:"skip_tags,omitempty"`
+	ExtraVars     string `json:"extra_vars,omitempty"`
+	Check         bool   `json:"check,omitempty"`
 }
 
 // Keystore is a Semaphore UI access key / keystore entry.
