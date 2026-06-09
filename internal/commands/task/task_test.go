@@ -337,6 +337,91 @@ func TestRunCommandWithAnsibleFlags(t *testing.T) {
 	}
 }
 
+func TestRunCommandRejectsInvalidExtraVars(t *testing.T) {
+	posted := false
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/project/1/tasks", func(w http.ResponseWriter, r *http.Request) {
+		posted = true
+		_ = json.NewEncoder(w).Encode(api.Task{ID: 812, Status: "running"})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	_, _, err := testutil.RunCommand(t, NewTaskCommand(), "task", "run", "7",
+		"--host", srv.URL, "--project", "1", "--extra-vars", "not json")
+	if err == nil {
+		t.Fatal("expected error for invalid --extra-vars JSON (issue #81)")
+	}
+	if !strings.Contains(err.Error(), "valid JSON object") {
+		t.Fatalf("expected JSON-object validation error, got: %v", err)
+	}
+	if posted {
+		t.Fatal("task must not be queued when --extra-vars is invalid")
+	}
+}
+
+func TestRunCommandRejectsNonObjectExtraVars(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(api.Task{ID: 812, Status: "running"})
+	}))
+	defer srv.Close()
+
+	// A JSON array is valid JSON but not a JSON object — must be rejected.
+	_, _, err := testutil.RunCommand(t, NewTaskCommand(), "task", "run", "7",
+		"--host", srv.URL, "--project", "1", "--extra-vars", `["a","b"]`)
+	if err == nil {
+		t.Fatal("expected error for non-object --extra-vars (issue #81)")
+	}
+}
+
+func TestRunCommandDryRunSendsFlag(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/project/1/tasks", func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		// --dry-run must be sent as the boolean dry_run field (issue #69).
+		if dr, ok := body["dry_run"].(bool); !ok || !dr {
+			t.Fatalf("expected dry_run=true (bool), got %v (%T)", body["dry_run"], body["dry_run"])
+		}
+		_ = json.NewEncoder(w).Encode(api.Task{ID: 812, Status: "running"})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	_, _, err := testutil.RunCommand(t, NewTaskCommand(), "task", "run", "7",
+		"--host", srv.URL, "--project", "1", "--dry-run")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunCommandWatchWaitsForCompletion(t *testing.T) {
+	watched := false
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/project/1/tasks", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(api.Task{ID: 812, Status: "running"})
+	})
+	mux.HandleFunc("/api/project/1/tasks/812", func(w http.ResponseWriter, r *http.Request) {
+		// --watch must poll the task until terminal, not exit immediately (#68).
+		watched = true
+		_ = json.NewEncoder(w).Encode(api.Task{ID: 812, Status: "success"})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	stdout, _, err := testutil.RunCommand(t, NewTaskCommand(), "task", "run", "7",
+		"--host", srv.URL, "--project", "1", "--watch")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !watched {
+		t.Fatal("--watch did not poll the task status endpoint")
+	}
+	if !strings.Contains(stdout, "succeeded") {
+		t.Fatalf("expected completion message, got: %s", stdout)
+	}
+}
+
 func TestStopCommand(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {

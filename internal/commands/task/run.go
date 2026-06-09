@@ -15,6 +15,7 @@
 package task
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -108,6 +109,12 @@ which is distinct from --dry-run.`,
 				body.SkipTags = skipTags
 			}
 			if extraVars != "" {
+				// Semaphore silently drops malformed extra vars, so validate
+				// that the value is a JSON object before submitting (issue #81).
+				var probe map[string]any
+				if err := json.Unmarshal([]byte(extraVars), &probe); err != nil {
+					return fmt.Errorf("--extra-vars must be a valid JSON object: %w", err)
+				}
 				body.ExtraVars = extraVars
 			}
 			if check {
