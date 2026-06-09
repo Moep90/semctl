@@ -7,6 +7,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0](https://github.com/Moep90/semctl/compare/v0.4.1...v0.5.0) (2026-06-09)
+
+
+### Features
+
+* deepen api client, output, resolver, and project/template commands ([#50](https://github.com/Moep90/semctl/issues/50)) ([3f87f86](https://github.com/Moep90/semctl/commit/3f87f869d93ca3cc667faf15c89e0a04fe748256))
+* **testutil:** add MockServer with expectations, call log, and reset ([#40](https://github.com/Moep90/semctl/issues/40)) ([da9ae63](https://github.com/Moep90/semctl/commit/da9ae635c2718a27f6dd309792c01a8abd8ce7da))
+
 ## [0.4.1](https://github.com/Moep90/semctl/compare/v0.4.0...v0.4.1) (2026-06-08)
 
 
