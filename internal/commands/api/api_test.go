@@ -15,15 +15,13 @@
 package api
 
 import (
-	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 
-	"github.com/spf13/cobra"
+	"github.com/moep90/semaphore-cli/internal/testutil"
 )
 
 func TestAPIGet(t *testing.T) {
@@ -37,18 +35,12 @@ func TestAPIGet(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
-
-	var buf bytes.Buffer
-	root := newTestRoot(&buf)
-	root.SetArgs([]string{"api", "GET", "/projects", "--host", srv.URL})
-	if err := root.Execute(); err != nil {
+	stdout, _, err := testutil.RunCommand(t, NewAPICommand(), "api", "GET", "/projects", "--host", srv.URL)
+	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(buf.String(), "infra") {
-		t.Fatalf("expected infra in output, got: %s", buf.String())
+	if !strings.Contains(stdout, "infra") {
+		t.Fatalf("expected infra in output, got: %s", stdout)
 	}
 }
 
@@ -68,18 +60,12 @@ func TestAPIPostWithFields(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
-
-	var buf bytes.Buffer
-	root := newTestRoot(&buf)
-	root.SetArgs([]string{"api", "POST", "/tasks", "--host", srv.URL, "-f", "message=hello"})
-	if err := root.Execute(); err != nil {
+	stdout, _, err := testutil.RunCommand(t, NewAPICommand(), "api", "POST", "/tasks", "--host", srv.URL, "-f", "message=hello")
+	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(buf.String(), "42") {
-		t.Fatalf("expected id in output, got: %s", buf.String())
+	if !strings.Contains(stdout, "42") {
+		t.Fatalf("expected id in output, got: %s", stdout)
 	}
 }
 
@@ -96,14 +82,8 @@ func TestAPIPostWithTypedFields(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
-
-	var buf bytes.Buffer
-	root := newTestRoot(&buf)
-	root.SetArgs([]string{"api", "POST", "/tasks", "--host", srv.URL, "-F", "count=5"})
-	if err := root.Execute(); err != nil {
+	_, _, err := testutil.RunCommand(t, NewAPICommand(), "api", "POST", "/tasks", "--host", srv.URL, "-F", "count=5")
+	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -117,21 +97,14 @@ func TestAPIErrorResponse(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
-
-	var buf bytes.Buffer
-	root := newTestRoot(&buf)
-	root.SetArgs([]string{"api", "GET", "/missing", "--host", srv.URL, "--output", "json"})
-	err := root.Execute()
+	stdout, _, err := testutil.RunCommand(t, NewAPICommand(), "api", "GET", "/missing", "--host", srv.URL, "--output", "json")
 	// api command with --output json returns nil after writing JSON error to stdout.
 	if err != nil {
 		t.Fatalf("expected no error (JSON error on stdout), got: %v", err)
 	}
 	var out map[string]any
-	if err := json.Unmarshal(buf.Bytes(), &out); err != nil {
-		t.Fatalf("expected JSON error on stdout, got: %s", buf.String())
+	if err := json.Unmarshal([]byte(stdout), &out); err != nil {
+		t.Fatalf("expected JSON error on stdout, got: %s", stdout)
 	}
 	if out["error"] == "" {
 		t.Fatalf("expected error key in JSON, got: %v", out)
@@ -139,40 +112,11 @@ func TestAPIErrorResponse(t *testing.T) {
 }
 
 func TestAPIInvalidHeader(t *testing.T) {
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
-
-	var buf bytes.Buffer
-	root := newTestRoot(&buf)
-	root.SetArgs([]string{"api", "GET", "/projects", "--host", "http://example.com", "--header", ":"})
-	err := root.Execute()
+	_, _, err := testutil.RunCommand(t, NewAPICommand(), "api", "GET", "/projects", "--host", "http://example.com", "--header", ":")
 	if err == nil {
 		t.Fatal("expected error for invalid header")
 	}
 	if !strings.Contains(err.Error(), "invalid header") {
 		t.Fatalf("expected invalid header error, got: %v", err)
 	}
-}
-
-func newTestRoot(out *bytes.Buffer) *cobra.Command {
-	root := &cobra.Command{
-		Use:           "semctl",
-		SilenceUsage:  true,
-		SilenceErrors: true,
-	}
-	root.PersistentFlags().String("host", "", "")
-	root.PersistentFlags().StringP("project", "p", "", "")
-	root.PersistentFlags().StringP("output", "o", "", "")
-	root.PersistentFlags().String("profile", "", "")
-	root.PersistentFlags().Bool("json", false, "")
-	root.PersistentFlags().Bool("no-color", false, "")
-	root.PersistentFlags().Bool("verbose", false, "")
-	root.PersistentFlags().Bool("debug", false, "")
-	root.AddCommand(NewAPICommand())
-	if out != nil {
-		root.SetOut(out)
-		root.SetErr(out)
-	}
-	return root
 }

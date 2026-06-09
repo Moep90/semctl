@@ -15,60 +15,46 @@
 package ping
 
 import (
-	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 
-	"github.com/spf13/cobra"
+	"github.com/moep90/semaphore-cli/internal/testutil"
 )
 
 func TestPingSuccess(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/ping", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/ping", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
-
-	var buf bytes.Buffer
-	root := newTestRoot(&buf)
-	root.SetArgs([]string{"ping", "--host", srv.URL})
-	if err := root.Execute(); err != nil {
+	stdout, _, err := testutil.RunCommand(t, NewPingCommand(), "ping", "--host", srv.URL)
+	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(buf.String(), "reachable") {
-		t.Fatalf("expected reachable in output, got: %s", buf.String())
+	if !strings.Contains(stdout, "reachable") {
+		t.Fatalf("expected reachable in output, got: %s", stdout)
 	}
 }
 
 func TestPingJSON(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/ping", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/ping", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
-
-	var buf bytes.Buffer
-	root := newTestRoot(&buf)
-	root.SetArgs([]string{"ping", "--host", srv.URL, "--output", "json"})
-	if err := root.Execute(); err != nil {
+	stdout, _, err := testutil.RunCommand(t, NewPingCommand(), "ping", "--host", srv.URL, "--output", "json")
+	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	var out map[string]any
-	if err := json.Unmarshal(buf.Bytes(), &out); err != nil {
+	if err := json.Unmarshal([]byte(stdout), &out); err != nil {
 		t.Fatalf("invalid json: %v", err)
 	}
 	if out["message"] != "Semaphore UI is reachable" {
@@ -78,60 +64,23 @@ func TestPingJSON(t *testing.T) {
 
 func TestPingFailure(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/ping", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/ping", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
-
-	var buf bytes.Buffer
-	root := newTestRoot(&buf)
-	root.SetArgs([]string{"ping", "--host", srv.URL})
-	err := root.Execute()
-	if err == nil {
+	if _, _, err := testutil.RunCommand(t, NewPingCommand(), "ping", "--host", srv.URL); err == nil {
 		t.Fatal("expected error for non-200 ping")
 	}
 }
 
 func TestPingNoHost(t *testing.T) {
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
-
-	var buf bytes.Buffer
-	root := newTestRoot(&buf)
-	root.SetArgs([]string{"ping"})
-	err := root.Execute()
+	_, _, err := testutil.RunCommand(t, NewPingCommand(), "ping")
 	if err == nil {
 		t.Fatal("expected error when host is missing")
 	}
 	if !strings.Contains(err.Error(), "no host configured") {
 		t.Fatalf("expected error to mention missing host, got: %v", err)
 	}
-}
-
-func newTestRoot(out *bytes.Buffer) *cobra.Command {
-	root := &cobra.Command{
-		Use:           "semctl",
-		SilenceUsage:  true,
-		SilenceErrors: true,
-	}
-	root.PersistentFlags().String("host", "", "")
-	root.PersistentFlags().StringP("project", "p", "", "")
-	root.PersistentFlags().StringP("output", "o", "", "")
-	root.PersistentFlags().String("profile", "", "")
-	root.PersistentFlags().Bool("json", false, "")
-	root.PersistentFlags().Bool("no-color", false, "")
-	root.PersistentFlags().Bool("verbose", false, "")
-	root.PersistentFlags().Bool("debug", false, "")
-	root.AddCommand(NewPingCommand())
-	if out != nil {
-		root.SetOut(out)
-		root.SetErr(out)
-	}
-	return root
 }

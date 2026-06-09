@@ -53,7 +53,7 @@ func newListCommand() *cobra.Command {
 		Example: `  semctl project list
   semctl project list --json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx, err := buildCmdContext(cmd)
+			ctx, err := cli.BuildCmdContext(cmd)
 			if err != nil {
 				return err
 			}
@@ -88,7 +88,7 @@ func newGetCommand() *cobra.Command {
   semctl project get 1 --output yaml`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx, err := buildCmdContext(cmd)
+			ctx, err := cli.BuildCmdContext(cmd)
 			if err != nil {
 				return err
 			}
@@ -118,7 +118,7 @@ func newDeleteCommand() *cobra.Command {
   semctl project delete 1`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx, err := buildCmdContext(cmd)
+			ctx, err := cli.BuildCmdContext(cmd)
 			if err != nil {
 				return err
 			}
@@ -144,7 +144,7 @@ func newCreateCommand() *cobra.Command {
 		Example: `  semctl project create --name infra
   semctl project create --name infra --max-parallel 10`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx, err := buildCmdContext(cmd)
+			ctx, err := cli.BuildCmdContext(cmd)
 			if err != nil {
 				return err
 			}
@@ -236,26 +236,4 @@ func newUseCommand() *cobra.Command {
 			return nil
 		},
 	}
-}
-
-func buildCmdContext(cmd *cobra.Command) (*cli.Context, error) {
-	hostFlag, _ := cmd.Flags().GetString("host")
-	projectFlag, _ := cmd.Flags().GetString("project")
-	outputFlag, _ := cmd.Flags().GetString("output")
-	profileFlag, _ := cmd.Flags().GetString("profile")
-	jsonFlag, _ := cmd.Flags().GetBool("json")
-	noColor, _ := cmd.Flags().GetBool("no-color")
-	verbose, _ := cmd.Flags().GetBool("verbose")
-	debug, _ := cmd.Flags().GetBool("debug")
-
-	// Only apply --json shorthand when --output was not explicitly set.
-	if jsonFlag && !cmd.Flags().Changed("output") {
-		outputFlag = "json"
-	}
-
-	cfg, err := config.Load()
-	if err != nil {
-		return nil, fmt.Errorf("load config: %w", err)
-	}
-	return cli.BuildContext(cfg, hostFlag, projectFlag, outputFlag, profileFlag, noColor, verbose, debug)
 }

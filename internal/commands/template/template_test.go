@@ -15,18 +15,15 @@
 package template
 
 import (
-	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/spf13/cobra"
-
 	"github.com/moep90/semaphore-cli/internal/api"
+	"github.com/moep90/semaphore-cli/internal/testutil"
 )
 
 func TestListCommand(t *testing.T) {
@@ -42,18 +39,12 @@ func TestListCommand(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
-
-	var buf bytes.Buffer
-	root := newTestRoot(&buf)
-	root.SetArgs([]string{"template", "list", "--host", srv.URL, "--project", "infra", "--output", "json"})
-	if err := root.Execute(); err != nil {
+	stdout, _, err := testutil.RunCommand(t, NewTemplateCommand(), "template", "list", "--host", srv.URL, "--project", "infra", "--output", "json")
+	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	var out []map[string]any
-	if err := json.Unmarshal(buf.Bytes(), &out); err != nil {
+	if err := json.Unmarshal([]byte(stdout), &out); err != nil {
 		t.Fatalf("invalid json: %v", err)
 	}
 	if len(out) != 1 {
@@ -78,18 +69,12 @@ func TestGetCommand(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
-
-	var buf bytes.Buffer
-	root := newTestRoot(&buf)
-	root.SetArgs([]string{"template", "get", "deploy-prod", "--host", srv.URL, "--project", "infra", "--output", "json"})
-	if err := root.Execute(); err != nil {
+	stdout, _, err := testutil.RunCommand(t, NewTemplateCommand(), "template", "get", "deploy-prod", "--host", srv.URL, "--project", "infra", "--output", "json")
+	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	var out map[string]any
-	if err := json.Unmarshal(buf.Bytes(), &out); err != nil {
+	if err := json.Unmarshal([]byte(stdout), &out); err != nil {
 		t.Fatalf("invalid json: %v", err)
 	}
 	if out["name"] != "deploy-prod" {
@@ -117,18 +102,12 @@ func TestDeleteCommand(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
-
-	var buf bytes.Buffer
-	root := newTestRoot(&buf)
-	root.SetArgs([]string{"template", "delete", "deploy-prod", "--host", srv.URL, "--project", "infra", "--output", "json"})
-	if err := root.Execute(); err != nil {
+	stdout, _, err := testutil.RunCommand(t, NewTemplateCommand(), "template", "delete", "deploy-prod", "--host", srv.URL, "--project", "infra", "--output", "json")
+	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(buf.String(), "Deleted template") {
-		t.Fatalf("expected success message, got: %s", buf.String())
+	if !strings.Contains(stdout, "Deleted template") {
+		t.Fatalf("expected success message, got: %s", stdout)
 	}
 }
 
@@ -161,18 +140,12 @@ func TestCloneCommand(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
-
-	var buf bytes.Buffer
-	root := newTestRoot(&buf)
-	root.SetArgs([]string{"template", "clone", "deploy-prod", "deploy-staging", "--host", srv.URL, "--project", "infra", "--output", "json"})
-	if err := root.Execute(); err != nil {
+	stdout, _, err := testutil.RunCommand(t, NewTemplateCommand(), "template", "clone", "deploy-prod", "deploy-staging", "--host", srv.URL, "--project", "infra", "--output", "json")
+	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(buf.String(), "Cloned template") {
-		t.Fatalf("expected success message, got: %s", buf.String())
+	if !strings.Contains(stdout, "Cloned template") {
+		t.Fatalf("expected success message, got: %s", stdout)
 	}
 }
 
@@ -194,43 +167,15 @@ func TestTasksCommand(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
-
-	var buf bytes.Buffer
-	root := newTestRoot(&buf)
-	root.SetArgs([]string{"template", "tasks", "deploy-prod", "--host", srv.URL, "--project", "infra", "--output", "json"})
-	if err := root.Execute(); err != nil {
+	stdout, _, err := testutil.RunCommand(t, NewTemplateCommand(), "template", "tasks", "deploy-prod", "--host", srv.URL, "--project", "infra", "--output", "json")
+	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	var out []map[string]any
-	if err := json.Unmarshal(buf.Bytes(), &out); err != nil {
+	if err := json.Unmarshal([]byte(stdout), &out); err != nil {
 		t.Fatalf("invalid json: %v", err)
 	}
 	if len(out) != 1 {
 		t.Fatalf("expected 1 task, got %d", len(out))
 	}
-}
-
-func newTestRoot(out *bytes.Buffer) *cobra.Command {
-	root := &cobra.Command{
-		Use:           "semctl",
-		SilenceUsage:  true,
-		SilenceErrors: true,
-	}
-	root.PersistentFlags().String("host", "", "")
-	root.PersistentFlags().StringP("project", "p", "", "")
-	root.PersistentFlags().StringP("output", "o", "", "")
-	root.PersistentFlags().String("profile", "", "")
-	root.PersistentFlags().Bool("json", false, "")
-	root.PersistentFlags().Bool("no-color", false, "")
-	root.PersistentFlags().Bool("verbose", false, "")
-	root.PersistentFlags().Bool("debug", false, "")
-	root.AddCommand(NewTemplateCommand())
-	if out != nil {
-		root.SetOut(out)
-		root.SetErr(out)
-	}
-	return root
 }
