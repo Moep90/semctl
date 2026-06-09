@@ -191,6 +191,24 @@ func TestUpdateCommand(t *testing.T) {
 	srv.AssertCalled(t, "PUT", "/api/project/2/inventory/7")
 }
 
+func TestUpdateCommandReportsServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"Inventory ID in body and URL must be the same"}`))
+	}))
+	defer srv.Close()
+
+	stdout, _, err := testutil.RunCommand(t, NewInventoryCommand(),
+		"inventory", "update", "3", "--inventory", "new content",
+		"--host", srv.URL, "--project", "2")
+	if err == nil {
+		t.Fatalf("expected error on HTTP 400, got nil (stdout=%q)", stdout)
+	}
+	if strings.Contains(stdout, "Updated inventory") {
+		t.Fatalf("must not report false success, got: %q", stdout)
+	}
+}
+
 func TestDeleteCommand(t *testing.T) {
 	srv := testutil.NewMockServer()
 	defer srv.Close()

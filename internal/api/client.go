@@ -333,6 +333,21 @@ func isRetryableStatus(code int) bool {
 	}
 }
 
+// CheckResponse returns an *Error when the response status is >= 400 and nil
+// otherwise. It always closes the response body, so it is intended for mutating
+// requests (POST/PUT/DELETE) whose body is not otherwise consumed. Without this
+// check, callers that only inspect the returned error miss HTTP 4xx responses,
+// because Client.Do only returns a Go error for transport failures and
+// retry-exhausted 5xx — not for 4xx.
+func CheckResponse(resp *http.Response) error {
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(resp.Body)
+		return &Error{StatusCode: resp.StatusCode, Body: body}
+	}
+	return nil
+}
+
 // DecodeJSON reads and decodes a JSON response body.
 func DecodeJSON(resp *http.Response, dest any) error {
 	defer func() { _ = resp.Body.Close() }()

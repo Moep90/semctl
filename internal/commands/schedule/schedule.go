@@ -143,8 +143,11 @@ func newCreateCommand() *cobra.Command {
 				"cron_format": cron,
 				"active":      true,
 			}
-			_, err = ctx.Client.Do(cmd.Context(), "POST", fmt.Sprintf("/project/%d/schedules", projectID), body)
+			resp, err := ctx.Client.Do(cmd.Context(), "POST", fmt.Sprintf("/project/%d/schedules", projectID), body)
 			if err != nil {
+				return fmt.Errorf("create schedule: %w", err)
+			}
+			if err := api.CheckResponse(resp); err != nil {
 				return fmt.Errorf("create schedule: %w", err)
 			}
 			label := name
@@ -205,8 +208,11 @@ func newUpdateCommand() *cobra.Command {
 				name, _ := cmd.Flags().GetString("name")
 				body["name"] = name
 			}
-			_, err = ctx.Client.Do(cmd.Context(), "PUT", fmt.Sprintf("/project/%d/schedules/%d", projectID, scheduleID), body)
+			resp, err := ctx.Client.Do(cmd.Context(), "PUT", fmt.Sprintf("/project/%d/schedules/%d", projectID, scheduleID), body)
 			if err != nil {
+				return fmt.Errorf("update schedule: %w", err)
+			}
+			if err := api.CheckResponse(resp); err != nil {
 				return fmt.Errorf("update schedule: %w", err)
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "✓ Updated schedule %s\n", args[0])
@@ -237,8 +243,11 @@ func newDeleteCommand() *cobra.Command {
 				return err
 			}
 			projectID, _ := ctx.ResolveProjectID(cmd.Context())
-			_, err = ctx.Client.Do(cmd.Context(), "DELETE", fmt.Sprintf("/project/%d/schedules/%d", projectID, scheduleID), nil)
+			resp, err := ctx.Client.Do(cmd.Context(), "DELETE", fmt.Sprintf("/project/%d/schedules/%d", projectID, scheduleID), nil)
 			if err != nil {
+				return fmt.Errorf("delete schedule: %w", err)
+			}
+			if err := api.CheckResponse(resp); err != nil {
 				return fmt.Errorf("delete schedule: %w", err)
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "✓ Deleted schedule %s\n", args[0])

@@ -119,14 +119,10 @@ This is the escape hatch for endpoints not yet covered by first-class commands.`
 			}
 
 			if resp.StatusCode >= 400 {
-				if ctx.Printer.Mode == output.ModeJSON {
-					_ = json.NewEncoder(ctx.Printer.Stdout).Encode(map[string]string{"error": fmt.Sprintf("api error %d", resp.StatusCode)})
-					return nil
-				}
-				if ctx.Printer.Mode == output.ModeYAML {
-					_ = yaml.NewEncoder(ctx.Printer.Stdout).Encode(map[string]string{"error": fmt.Sprintf("api error %d", resp.StatusCode)})
-					return nil
-				}
+				// Return the error in every output mode so the process exits
+				// non-zero. The top-level error renderer formats it as JSON/YAML
+				// on stderr when --output requests it (issue #73); --output must
+				// only change the format, never suppress the exit code.
 				return &semapi.Error{StatusCode: resp.StatusCode, Body: data}
 			}
 

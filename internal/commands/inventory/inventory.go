@@ -191,8 +191,11 @@ func newCreateCommand() *cobra.Command {
 			if hasContent {
 				body["inventory"] = content
 			}
-			_, err = ctx.Client.Do(cmd.Context(), "POST", fmt.Sprintf("/project/%d/inventory", projectID), body)
+			resp, err := ctx.Client.Do(cmd.Context(), "POST", fmt.Sprintf("/project/%d/inventory", projectID), body)
 			if err != nil {
+				return fmt.Errorf("create inventory: %w", err)
+			}
+			if err := api.CheckResponse(resp); err != nil {
 				return fmt.Errorf("create inventory: %w", err)
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "✓ Created inventory %s\n", name)
@@ -247,8 +250,11 @@ func newUpdateCommand() *cobra.Command {
 			if hasContent {
 				body["inventory"] = content
 			}
-			_, err = ctx.Client.Do(cmd.Context(), "PUT", fmt.Sprintf("/project/%d/inventory/%d", projectID, inventoryID), body)
+			resp, err := ctx.Client.Do(cmd.Context(), "PUT", fmt.Sprintf("/project/%d/inventory/%d", projectID, inventoryID), body)
 			if err != nil {
+				return fmt.Errorf("update inventory: %w", err)
+			}
+			if err := api.CheckResponse(resp); err != nil {
 				return fmt.Errorf("update inventory: %w", err)
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "✓ Updated inventory %s\n", args[0])
@@ -283,8 +289,11 @@ func newDeleteCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			_, err = ctx.Client.Do(cmd.Context(), "DELETE", fmt.Sprintf("/project/%d/inventory/%d", projectID, inventoryID), nil)
+			resp, err := ctx.Client.Do(cmd.Context(), "DELETE", fmt.Sprintf("/project/%d/inventory/%d", projectID, inventoryID), nil)
 			if err != nil {
+				return fmt.Errorf("delete inventory: %w", err)
+			}
+			if err := api.CheckResponse(resp); err != nil {
 				return fmt.Errorf("delete inventory: %w", err)
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "✓ Deleted inventory %s\n", args[0])

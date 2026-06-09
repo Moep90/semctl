@@ -635,3 +635,35 @@ func FuzzIsRetryableStatus(f *testing.F) {
 		_ = result
 	})
 }
+
+func TestCheckResponse(t *testing.T) {
+	t.Run("nil for 2xx", func(t *testing.T) {
+		resp := &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader("ok"))}
+		if err := CheckResponse(resp); err != nil {
+			t.Fatalf("expected nil for 200, got %v", err)
+		}
+	})
+	t.Run("nil for 201", func(t *testing.T) {
+		resp := &http.Response{StatusCode: 201, Body: io.NopCloser(strings.NewReader(""))}
+		if err := CheckResponse(resp); err != nil {
+			t.Fatalf("expected nil for 201, got %v", err)
+		}
+	})
+	t.Run("error with body for 400", func(t *testing.T) {
+		resp := &http.Response{StatusCode: 400, Body: io.NopCloser(strings.NewReader("bad cron"))}
+		err := CheckResponse(resp)
+		if err == nil {
+			t.Fatal("expected error for 400, got nil")
+		}
+		var apiErr *Error
+		if !errors.As(err, &apiErr) {
+			t.Fatalf("expected *Error, got %T", err)
+		}
+		if apiErr.StatusCode != 400 {
+			t.Fatalf("expected status 400, got %d", apiErr.StatusCode)
+		}
+		if !strings.Contains(apiErr.BodyString(), "bad cron") {
+			t.Fatalf("expected body preserved, got %q", apiErr.BodyString())
+		}
+	})
+}
