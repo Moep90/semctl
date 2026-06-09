@@ -15,62 +15,39 @@
 package config
 
 import (
-	"bytes"
 	"encoding/json"
-	"io"
-	"os"
 	"strings"
 	"testing"
 
-	"github.com/spf13/cobra"
+	"github.com/moep90/semaphore-cli/internal/testutil"
 
 	cfgpkg "github.com/moep90/semaphore-cli/internal/config"
 )
 
 func TestConfigGet(t *testing.T) {
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
-
+	h := testutil.New(t)
 	cfg := cfgpkg.DefaultConfig()
 	cfg.CurrentProfile = "prod"
 	cfg.Profiles["prod"] = &cfgpkg.Profile{Host: "https://semaphore.example.com"}
-	_ = cfgpkg.Save(cfg)
+	h.WriteConfig(t, cfg)
 
-	oldStdout := os.Stdout
-	rPipe, wPipe, _ := os.Pipe()
-	os.Stdout = wPipe
-
-	root := newTestRoot(nil)
-	root.SetArgs([]string{"config", "get", "host"})
-	if err := root.Execute(); err != nil {
-		_ = wPipe.Close()
-		os.Stdout = oldStdout
+	stdout, _, err := h.Run(t, NewConfigCommand(), "config", "get", "host")
+	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	_ = wPipe.Close()
-	os.Stdout = oldStdout
-	data, _ := io.ReadAll(rPipe)
-	out := string(data)
-	if !strings.Contains(out, "https://semaphore.example.com") {
-		t.Fatalf("expected host in output, got: %s", out)
+	if !strings.Contains(stdout, "https://semaphore.example.com") {
+		t.Fatalf("expected host in output, got: %s", stdout)
 	}
 }
 
 func TestConfigSet(t *testing.T) {
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
-
+	h := testutil.New(t)
 	cfg := cfgpkg.DefaultConfig()
 	cfg.CurrentProfile = "prod"
 	cfg.Profiles["prod"] = &cfgpkg.Profile{}
-	_ = cfgpkg.Save(cfg)
+	h.WriteConfig(t, cfg)
 
-	var buf bytes.Buffer
-	root := newTestRoot(&buf)
-	root.SetArgs([]string{"config", "set", "project", "infra"})
-	if err := root.Execute(); err != nil {
+	if _, _, err := h.Run(t, NewConfigCommand(), "config", "set", "project", "infra"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -84,26 +61,21 @@ func TestConfigSet(t *testing.T) {
 }
 
 func TestConfigList(t *testing.T) {
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
-
+	h := testutil.New(t)
 	cfg := cfgpkg.DefaultConfig()
 	cfg.CurrentProfile = "prod"
 	cfg.Profiles["prod"] = &cfgpkg.Profile{
 		Host:    "https://semaphore.example.com",
 		Project: "infra",
 	}
-	_ = cfgpkg.Save(cfg)
+	h.WriteConfig(t, cfg)
 
-	var buf bytes.Buffer
-	root := newTestRoot(&buf)
-	root.SetArgs([]string{"config", "list", "--output", "json"})
-	if err := root.Execute(); err != nil {
+	stdout, _, err := h.Run(t, NewConfigCommand(), "config", "list", "--output", "json")
+	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	var out map[string]any
-	if err := json.Unmarshal(buf.Bytes(), &out); err != nil {
+	if err := json.Unmarshal([]byte(stdout), &out); err != nil {
 		t.Fatalf("invalid json: %v", err)
 	}
 	if out["current_profile"] != "prod" {
@@ -112,24 +84,19 @@ func TestConfigList(t *testing.T) {
 }
 
 func TestProfileListJSON(t *testing.T) {
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
-
+	h := testutil.New(t)
 	cfg := cfgpkg.DefaultConfig()
 	cfg.CurrentProfile = "prod"
 	cfg.Profiles["prod"] = &cfgpkg.Profile{Host: "https://semaphore.example.com"}
 	cfg.Profiles["dev"] = &cfgpkg.Profile{Host: "https://dev.example.com"}
-	_ = cfgpkg.Save(cfg)
+	h.WriteConfig(t, cfg)
 
-	var buf bytes.Buffer
-	root := newTestRoot(&buf)
-	root.SetArgs([]string{"config", "profile", "list", "--output", "json"})
-	if err := root.Execute(); err != nil {
+	stdout, _, err := h.Run(t, NewConfigCommand(), "config", "profile", "list", "--output", "json")
+	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	var out []map[string]any
-	if err := json.Unmarshal(buf.Bytes(), &out); err != nil {
+	if err := json.Unmarshal([]byte(stdout), &out); err != nil {
 		t.Fatalf("invalid json: %v", err)
 	}
 	if len(out) != 2 {
@@ -147,26 +114,14 @@ func TestProfileListJSON(t *testing.T) {
 }
 
 func TestProfileCreate(t *testing.T) {
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
+	h := testutil.New(t)
 
-	oldStdout := os.Stdout
-	rPipe, wPipe, _ := os.Pipe()
-	os.Stdout = wPipe
-
-	root := newTestRoot(nil)
-	root.SetArgs([]string{"config", "profile", "create", "lab"})
-	if err := root.Execute(); err != nil {
-		_ = wPipe.Close()
-		os.Stdout = oldStdout
+	stdout, _, err := h.Run(t, NewConfigCommand(), "config", "profile", "create", "lab")
+	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	_ = wPipe.Close()
-	os.Stdout = oldStdout
-	data, _ := io.ReadAll(rPipe)
-	if !strings.Contains(string(data), "Created profile lab") {
-		t.Fatalf("expected success message, got: %s", string(data))
+	if !strings.Contains(stdout, "Created profile lab") {
+		t.Fatalf("expected success message, got: %s", stdout)
 	}
 
 	cfg, err := cfgpkg.Load()
@@ -179,13 +134,7 @@ func TestProfileCreate(t *testing.T) {
 }
 
 func TestProfileCreateEmptyName(t *testing.T) {
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
-
-	root := newTestRoot(nil)
-	root.SetArgs([]string{"config", "profile", "create", ""})
-	err := root.Execute()
+	_, _, err := testutil.RunCommand(t, NewConfigCommand(), "config", "profile", "create", "")
 	if err == nil {
 		t.Fatal("expected error for empty profile name")
 	}
@@ -195,13 +144,7 @@ func TestProfileCreateEmptyName(t *testing.T) {
 }
 
 func TestProfileCreateWhitespaceName(t *testing.T) {
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
-
-	root := newTestRoot(nil)
-	root.SetArgs([]string{"config", "profile", "create", "   "})
-	err := root.Execute()
+	_, _, err := testutil.RunCommand(t, NewConfigCommand(), "config", "profile", "create", "   ")
 	if err == nil {
 		t.Fatal("expected error for whitespace-only profile name")
 	}
@@ -211,44 +154,17 @@ func TestProfileCreateWhitespaceName(t *testing.T) {
 }
 
 func TestConfigSetInvalidOutput(t *testing.T) {
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
-
+	h := testutil.New(t)
 	cfg := cfgpkg.DefaultConfig()
 	cfg.CurrentProfile = "prod"
 	cfg.Profiles["prod"] = &cfgpkg.Profile{}
-	_ = cfgpkg.Save(cfg)
+	h.WriteConfig(t, cfg)
 
-	root := newTestRoot(nil)
-	root.SetArgs([]string{"config", "set", "output", "invalid_mode"})
-	err := root.Execute()
+	_, _, err := h.Run(t, NewConfigCommand(), "config", "set", "output", "invalid_mode")
 	if err == nil {
 		t.Fatal("expected error for invalid output mode")
 	}
 	if !strings.Contains(err.Error(), "invalid") || !strings.Contains(err.Error(), "output") {
 		t.Fatalf("expected error about invalid output, got: %v", err)
 	}
-}
-
-func newTestRoot(out *bytes.Buffer) *cobra.Command {
-	root := &cobra.Command{
-		Use:           "semctl",
-		SilenceUsage:  true,
-		SilenceErrors: true,
-	}
-	root.PersistentFlags().String("host", "", "")
-	root.PersistentFlags().StringP("project", "p", "", "")
-	root.PersistentFlags().StringP("output", "o", "", "")
-	root.PersistentFlags().String("profile", "", "")
-	root.PersistentFlags().Bool("json", false, "")
-	root.PersistentFlags().Bool("no-color", false, "")
-	root.PersistentFlags().Bool("verbose", false, "")
-	root.PersistentFlags().Bool("debug", false, "")
-	root.AddCommand(NewConfigCommand())
-	if out != nil {
-		root.SetOut(out)
-		root.SetErr(out)
-	}
-	return root
 }

@@ -15,17 +15,14 @@
 package info
 
 import (
-	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 
-	"github.com/spf13/cobra"
-
 	"github.com/moep90/semaphore-cli/internal/api"
+	"github.com/moep90/semaphore-cli/internal/testutil"
 )
 
 func TestInfoCommand(t *testing.T) {
@@ -36,18 +33,12 @@ func TestInfoCommand(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
-
-	var buf bytes.Buffer
-	root := newTestRoot(&buf)
-	root.SetArgs([]string{"info", "--host", srv.URL, "--output", "json"})
-	if err := root.Execute(); err != nil {
+	stdout, _, err := testutil.RunCommand(t, NewInfoCommand(), "info", "--host", srv.URL, "--output", "json")
+	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	var out map[string]any
-	if err := json.Unmarshal(buf.Bytes(), &out); err != nil {
+	if err := json.Unmarshal([]byte(stdout), &out); err != nil {
 		t.Fatalf("invalid json: %v", err)
 	}
 	if out["version"] != "2.10.0" {
@@ -63,39 +54,11 @@ func TestInfoCommandTable(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
-
-	var buf bytes.Buffer
-	root := newTestRoot(&buf)
-	root.SetArgs([]string{"info", "--host", srv.URL})
-	if err := root.Execute(); err != nil {
+	stdout, _, err := testutil.RunCommand(t, NewInfoCommand(), "info", "--host", srv.URL)
+	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(buf.String(), "2.10.0") {
-		t.Fatalf("expected version in output, got: %s", buf.String())
+	if !strings.Contains(stdout, "2.10.0") {
+		t.Fatalf("expected version in output, got: %s", stdout)
 	}
-}
-
-func newTestRoot(out *bytes.Buffer) *cobra.Command {
-	root := &cobra.Command{
-		Use:           "semctl",
-		SilenceUsage:  true,
-		SilenceErrors: true,
-	}
-	root.PersistentFlags().String("host", "", "")
-	root.PersistentFlags().StringP("project", "p", "", "")
-	root.PersistentFlags().StringP("output", "o", "", "")
-	root.PersistentFlags().String("profile", "", "")
-	root.PersistentFlags().Bool("json", false, "")
-	root.PersistentFlags().Bool("no-color", false, "")
-	root.PersistentFlags().Bool("verbose", false, "")
-	root.PersistentFlags().Bool("debug", false, "")
-	root.AddCommand(NewInfoCommand())
-	if out != nil {
-		root.SetOut(out)
-		root.SetErr(out)
-	}
-	return root
 }

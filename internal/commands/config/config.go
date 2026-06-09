@@ -58,7 +58,7 @@ func newGetCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Println(v)
+			fmt.Fprintln(cmd.OutOrStdout(), v)
 			return nil
 		},
 	}
@@ -184,7 +184,7 @@ func newProfileUseCommand() *cobra.Command {
 			if err := config.Save(cfg); err != nil {
 				return fmt.Errorf("save config: %w", err)
 			}
-			fmt.Printf("✓ Active profile is now %s\n", name)
+			fmt.Fprintf(cmd.OutOrStdout(), "✓ Active profile is now %s\n", name)
 			return nil
 		},
 	}
@@ -215,7 +215,7 @@ func newProfileCreateCommand() *cobra.Command {
 			if err := config.Save(cfg); err != nil {
 				return fmt.Errorf("save config: %w", err)
 			}
-			fmt.Printf("✓ Created profile %s\n", name)
+			fmt.Fprintf(cmd.OutOrStdout(), "✓ Created profile %s\n", name)
 			return nil
 		},
 	}
@@ -249,7 +249,7 @@ func newProfileDeleteCommand() *cobra.Command {
 			if err := config.Save(cfg); err != nil {
 				return fmt.Errorf("save config: %w", err)
 			}
-			fmt.Printf("✓ Deleted profile %s\n", name)
+			fmt.Fprintf(cmd.OutOrStdout(), "✓ Deleted profile %s\n", name)
 			return nil
 		},
 	}
