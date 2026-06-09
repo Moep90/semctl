@@ -163,41 +163,89 @@ func TestDeleteCommand(t *testing.T) {
 	}
 }
 
-func TestCloneCommand(t *testing.T) {
+// cloneServer fakes the source GET and the create POST for the clone command.
+// Semaphore has no clone endpoint, so clone must read the source template and
+// re-create it under the new name. posted captures the create body.
+func cloneServer(t *testing.T, createStatus int) (*httptest.Server, *map[string]any) {
+	t.Helper()
+	posted := map[string]any{}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode([]api.Project{{ID: 1, Name: "infra"}})
-	})
-	mux.HandleFunc("/api/project/1/templates", func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode([]api.Template{
-			{ID: 7, Name: "deploy-prod"},
+	mux.HandleFunc("/api/project/1/templates/7", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id": 7, "name": "deploy-prod", "project_id": 1,
+			"playbook": "site.yml", "inventory_id": 9,
 		})
 	})
-	mux.HandleFunc("/api/project/1/templates/7/clone", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
+	mux.HandleFunc("/api/project/1/templates", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
 			http.Error(w, "expected POST", http.StatusMethodNotAllowed)
 			return
 		}
-		var body map[string]string
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
+		_ = json.NewDecoder(r.Body).Decode(&posted)
+		w.WriteHeader(createStatus)
+		if createStatus < 300 {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": 42, "name": "deploy-staging", "project_id": 1,
+				"playbook": "site.yml", "inventory_id": 9,
+			})
 		}
-		if body["name"] != "deploy-staging" {
-			http.Error(w, "unexpected name", http.StatusBadRequest)
-			return
-		}
-		w.WriteHeader(http.StatusOK)
 	})
 	srv := httptest.NewServer(mux)
-	defer srv.Close()
+	t.Cleanup(srv.Close)
+	return srv, &posted
+}
 
-	stdout, _, err := testutil.RunCommand(t, NewTemplateCommand(), "template", "clone", "deploy-prod", "deploy-staging", "--host", srv.URL, "--project", "infra", "--output", "json")
+func TestCloneCommand(t *testing.T) {
+	srv, posted := cloneServer(t, http.StatusCreated)
+
+	stdout, _, err := testutil.RunCommand(t, NewTemplateCommand(), "template", "clone", "7", "deploy-staging", "--host", srv.URL, "--project", "1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	// The create body must carry the new name, drop the source id, and preserve
+	// the rest of the source template.
+	if (*posted)["name"] != "deploy-staging" {
+		t.Fatalf("expected name=deploy-staging in create body, got: %v", *posted)
+	}
+	if _, ok := (*posted)["id"]; ok {
+		t.Fatalf("source id must be stripped from create body, got: %v", *posted)
+	}
+	if (*posted)["playbook"] != "site.yml" {
+		t.Fatalf("expected source fields preserved, got: %v", *posted)
+	}
 	if !strings.Contains(stdout, "Cloned template") {
 		t.Fatalf("expected success message, got: %s", stdout)
+	}
+}
+
+func TestCloneCommandJSON(t *testing.T) {
+	srv, _ := cloneServer(t, http.StatusCreated)
+
+	stdout, _, err := testutil.RunCommand(t, NewTemplateCommand(), "template", "clone", "7", "deploy-staging", "--host", srv.URL, "--project", "1", "--output", "json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal([]byte(stdout), &out); err != nil {
+		t.Fatalf("expected JSON object for created template (issue #66), got: %s", stdout)
+	}
+	if out["id"] != float64(42) {
+		t.Fatalf("expected new template id 42, got: %v", out["id"])
+	}
+	if out["name"] != "deploy-staging" {
+		t.Fatalf("expected name deploy-staging, got: %v", out["name"])
+	}
+}
+
+func TestCloneCommandServerError(t *testing.T) {
+	srv, _ := cloneServer(t, http.StatusBadRequest)
+
+	stdout, _, err := testutil.RunCommand(t, NewTemplateCommand(), "template", "clone", "7", "deploy-staging", "--host", srv.URL, "--project", "1")
+	if err == nil {
+		t.Fatalf("expected error when create returns 400 (issue #65), got nil (stdout=%q)", stdout)
+	}
+	if strings.Contains(stdout, "Cloned template") {
+		t.Fatalf("must not report false success, got: %q", stdout)
 	}
 }
 

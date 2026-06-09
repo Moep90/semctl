@@ -22,6 +22,7 @@ import (
 
 	"github.com/moep90/semaphore-cli/internal/api"
 	"github.com/moep90/semaphore-cli/internal/cli"
+	"github.com/moep90/semaphore-cli/internal/output"
 )
 
 // NewTemplateCommand builds the template command group.
@@ -173,12 +174,34 @@ func newCloneCommand() *cobra.Command {
 				return err
 			}
 			projectID, _ := ctx.ResolveProjectID(cmd.Context())
-			body := map[string]string{"name": args[1]}
-			_, err = ctx.Client.Do(cmd.Context(), "POST", fmt.Sprintf("/project/%d/templates/%d/clone", projectID, templateID), body)
+
+			// Semaphore has no clone endpoint: fetch the source template as a
+			// raw object (to preserve every field, not just the ones our struct
+			// models), then re-create it under the new name.
+			resp, err := ctx.Client.Do(cmd.Context(), "GET", fmt.Sprintf("/project/%d/templates/%d", projectID, templateID), nil)
 			if err != nil {
 				return fmt.Errorf("clone template: %w", err)
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "✓ Cloned template %s to %s\n", args[0], args[1])
+			var src map[string]any
+			if err := api.DecodeJSON(resp, &src); err != nil {
+				return fmt.Errorf("clone template: read source: %w", err)
+			}
+			delete(src, "id")
+			src["name"] = args[1]
+
+			resp, err = ctx.Client.Do(cmd.Context(), "POST", fmt.Sprintf("/project/%d/templates", projectID), src)
+			if err != nil {
+				return fmt.Errorf("clone template: %w", err)
+			}
+			var created api.Template
+			if err := api.DecodeJSON(resp, &created); err != nil {
+				return fmt.Errorf("clone template: %w", err)
+			}
+
+			if ctx.Printer.Mode == output.ModeJSON || ctx.Printer.Mode == output.ModeYAML {
+				return ctx.Printer.Print(created)
+			}
+			ctx.Printer.PrintSuccess(fmt.Sprintf("Cloned template %s to %s (id %d)", args[0], args[1], created.ID))
 			return nil
 		},
 	}
