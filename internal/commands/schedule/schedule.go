@@ -140,13 +140,14 @@ func newCreateCommand() *cobra.Command {
 			}
 			cron, _ := cmd.Flags().GetString("cron")
 			name, _ := cmd.Flags().GetString("name")
+			active, _ := cmd.Flags().GetBool("active")
 			// NOTE: cron_format and active follow the Semaphore API body schema.
 			body := map[string]any{
 				"project_id":  projectID,
 				"template_id": templateID,
 				"name":        name,
 				"cron_format": cron,
-				"active":      true,
+				"active":      active,
 			}
 			resp, err := ctx.Client.Do(cmd.Context(), "POST", fmt.Sprintf("/project/%d/schedules", projectID), body)
 			if err != nil {
@@ -166,6 +167,7 @@ func newCreateCommand() *cobra.Command {
 	cmd.Flags().String("template", "", "Template ID or name (required)")
 	cmd.Flags().String("cron", "", "Cron expression (required)")
 	cmd.Flags().String("name", "", "Schedule name")
+	cmd.Flags().Bool("active", true, "Whether the schedule is enabled")
 	_ = cmd.MarkFlagRequired("template")
 	_ = cmd.MarkFlagRequired("cron")
 	return cmd
@@ -213,6 +215,10 @@ func newUpdateCommand() *cobra.Command {
 				name, _ := cmd.Flags().GetString("name")
 				body["name"] = name
 			}
+			if cmd.Flags().Changed("active") {
+				active, _ := cmd.Flags().GetBool("active")
+				body["active"] = active
+			}
 			resp, err := ctx.Client.Do(cmd.Context(), "PUT", fmt.Sprintf("/project/%d/schedules/%d", projectID, scheduleID), body)
 			if err != nil {
 				return fmt.Errorf("update schedule: %w", err)
@@ -227,6 +233,7 @@ func newUpdateCommand() *cobra.Command {
 	cmd.Flags().String("template", "", "Template ID or name")
 	cmd.Flags().String("cron", "", "Cron expression")
 	cmd.Flags().String("name", "", "Schedule name")
+	cmd.Flags().Bool("active", true, "Whether the schedule is enabled")
 	return cmd
 }
 
