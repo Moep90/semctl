@@ -13,10 +13,15 @@
 # limitations under the License.
 
 [tools]
-go = "1.23.12"
-golangci-lint = "latest"
+go = "1.25.11"
+# golangci-lint v2 (config is v2 format). Must be built with Go >= the go.mod
+# target (1.25) — v1.64.8 was built with go1.24 and rejects 1.25 code. Keep in
+# sync with the CI lint action version.
+golangci-lint = "2.12.2"
 goreleaser = "latest"
-govulncheck = "latest"
+# govulncheck is distributed via `go install`, so it needs mise's go backend
+# rather than a bare tool name (which mise's registry cannot resolve).
+"go:golang.org/x/vuln/cmd/govulncheck" = "latest"
 
 [env]
 CGO_ENABLED = "0"
@@ -29,6 +34,10 @@ run = "golangci-lint run ./..."
 
 [tasks.test]
 run = "go test ./..."
+
+[tasks.coverage-check]
+description = "Fail if total coverage drops below the floor (.github/coverage-baseline)"
+run = "bash scripts/check-coverage.sh"
 
 [tasks.vuln]
 run = "govulncheck ./..."

@@ -15,18 +15,14 @@
 package inventory
 
 import (
-	"bytes"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 
-	"github.com/spf13/cobra"
-
 	"github.com/moep90/semaphore-cli/internal/api"
+	"github.com/moep90/semaphore-cli/internal/testutil"
 )
 
 func TestListCommand(t *testing.T) {
@@ -43,31 +39,15 @@ func TestListCommand(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
-
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	root := newTestRoot(nil)
-	root.SetArgs([]string{"inventory", "list", "--host", srv.URL, "--project", "infra"})
-	err := root.Execute()
-
-	_ = w.Close()
-	os.Stdout = oldStdout
-
+	stdout, _, err := testutil.RunCommand(t, NewInventoryCommand(), "inventory", "list", "--host", srv.URL, "--project", "infra")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	data, _ := io.ReadAll(r)
-	out := string(data)
-	if !strings.Contains(out, "prod-hosts") {
-		t.Fatalf("expected prod-hosts in output, got: %s", out)
+	if !strings.Contains(stdout, "prod-hosts") {
+		t.Fatalf("expected prod-hosts in output, got: %s", stdout)
 	}
-	if !strings.Contains(out, "dev-hosts") {
-		t.Fatalf("expected dev-hosts in output, got: %s", out)
+	if !strings.Contains(stdout, "dev-hosts") {
+		t.Fatalf("expected dev-hosts in output, got: %s", stdout)
 	}
 }
 
@@ -88,49 +68,11 @@ func TestGetCommand(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
-
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	root := newTestRoot(nil)
-	root.SetArgs([]string{"inventory", "get", "dev-hosts", "--host", srv.URL, "--project", "infra"})
-	err := root.Execute()
-
-	_ = w.Close()
-	os.Stdout = oldStdout
-
+	stdout, _, err := testutil.RunCommand(t, NewInventoryCommand(), "inventory", "get", "dev-hosts", "--host", srv.URL, "--project", "infra")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	data, _ := io.ReadAll(r)
-	out := string(data)
-	if !strings.Contains(out, "dev-hosts") {
-		t.Fatalf("expected dev-hosts in output, got: %s", out)
+	if !strings.Contains(stdout, "dev-hosts") {
+		t.Fatalf("expected dev-hosts in output, got: %s", stdout)
 	}
-}
-
-func newTestRoot(out *bytes.Buffer) *cobra.Command {
-	root := &cobra.Command{
-		Use:           "semctl",
-		SilenceUsage:  true,
-		SilenceErrors: true,
-	}
-	root.PersistentFlags().String("host", "", "")
-	root.PersistentFlags().StringP("project", "p", "", "")
-	root.PersistentFlags().StringP("output", "o", "", "")
-	root.PersistentFlags().String("profile", "", "")
-	root.PersistentFlags().Bool("json", false, "")
-	root.PersistentFlags().Bool("no-color", false, "")
-	root.PersistentFlags().Bool("verbose", false, "")
-	root.PersistentFlags().Bool("debug", false, "")
-	root.AddCommand(NewInventoryCommand())
-	if out != nil {
-		root.SetOut(out)
-		root.SetErr(out)
-	}
-	return root
 }

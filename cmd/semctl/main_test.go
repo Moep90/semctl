@@ -20,15 +20,28 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
+
+	"github.com/moep90/semaphore-cli/internal/cli"
 )
+
+// cmdWithOutput builds a command carrying the global flags with --output set to
+// mode, as if the user had passed it.
+func cmdWithOutput(t *testing.T, mode string) *cobra.Command {
+	t.Helper()
+	cmd := &cobra.Command{Use: "semctl"}
+	cli.RegisterGlobalFlags(cmd)
+	if err := cmd.PersistentFlags().Set("output", mode); err != nil {
+		t.Fatalf("set output flag: %v", err)
+	}
+	return cmd
+}
 
 func TestErrorOutputJSON(t *testing.T) {
 	var buf bytes.Buffer
-	jsonFlag = false
-	outputFlag = "json"
-	err := formatError(errors.New("test error"), &buf)
-	if !strings.Contains(buf.String(), "test error") {
-		t.Fatalf("expected error in output, got: %s", buf.String())
+	if err := formatError(cmdWithOutput(t, "json"), errors.New("test error"), &buf); err != nil {
+		t.Fatalf("formatError: %v", err)
 	}
 	var out map[string]string
 	if err := json.Unmarshal(buf.Bytes(), &out); err != nil {
@@ -37,27 +50,44 @@ func TestErrorOutputJSON(t *testing.T) {
 	if out["error"] != "test error" {
 		t.Fatalf("unexpected error content: %v", out)
 	}
-	_ = err
 }
 
 func TestErrorOutputYAML(t *testing.T) {
 	var buf bytes.Buffer
-	jsonFlag = false
-	outputFlag = "yaml"
-	err := formatError(errors.New("test error"), &buf)
+	if err := formatError(cmdWithOutput(t, "yaml"), errors.New("test error"), &buf); err != nil {
+		t.Fatalf("formatError: %v", err)
+	}
 	if !strings.Contains(buf.String(), "error") {
 		t.Fatalf("expected error in output, got: %s", buf.String())
 	}
-	_ = err
 }
 
 func TestErrorOutputPlain(t *testing.T) {
 	var buf bytes.Buffer
-	jsonFlag = false
-	outputFlag = ""
-	err := formatError(errors.New("test error"), &buf)
+	if err := formatError(cmdWithOutput(t, ""), errors.New("test error"), &buf); err != nil {
+		t.Fatalf("formatError: %v", err)
+	}
 	if !strings.Contains(buf.String(), "error: test error") {
 		t.Fatalf("expected plain text error, got: %s", buf.String())
 	}
-	_ = err
+}
+
+// TestErrorOutputJSONShorthand verifies the --json shorthand also triggers JSON.
+func TestErrorOutputJSONShorthand(t *testing.T) {
+	cmd := &cobra.Command{Use: "semctl"}
+	cli.RegisterGlobalFlags(cmd)
+	if err := cmd.PersistentFlags().Set("json", "true"); err != nil {
+		t.Fatalf("set json flag: %v", err)
+	}
+	var buf bytes.Buffer
+	if err := formatError(cmd, errors.New("boom"), &buf); err != nil {
+		t.Fatalf("formatError: %v", err)
+	}
+	var out map[string]string
+	if err := json.Unmarshal(buf.Bytes(), &out); err != nil {
+		t.Fatalf("expected JSON output, got: %s", buf.String())
+	}
+	if out["error"] != "boom" {
+		t.Fatalf("unexpected error content: %v", out)
+	}
 }

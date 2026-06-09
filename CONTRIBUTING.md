@@ -47,6 +47,9 @@ golangci-lint run ./...
 # Unit tests
 go test -race -count=1 ./...
 
+# Coverage floor (must not drop below .github/coverage-baseline)
+mise run coverage-check
+
 # Vulnerability check
 govulncheck ./...
 ```
@@ -81,9 +84,59 @@ This project uses automated releases. After a PR is merged to `main`:
 
 **Important:** Pull request titles are validated by CI and must follow Conventional Commits. The title is used as the squash-merge commit message, which Release Please reads to determine the next version.
 
+## Adding a command
+
+Commands follow one consistent shape so each new command is predictable and not a
+fresh source of bugs. To add one (see `internal/commands/project/project.go` for a
+worked example):
+
+1. Create or extend the group package `internal/commands/<group>/`, exposing
+   `New<Group>Command() *cobra.Command` that assembles the subcommands.
+2. Start every `RunE` with `ctx, err := cli.BuildCmdContext(cmd)`. **Do not** write a
+   per-package context builder — `BuildCmdContext` is the single entry point and it
+   wires the printer's writers to the command, which keeps output testable.
+3. Resolve name arguments to IDs via `ctx.Resolve<X>ID(cmd.Context(), arg)`. For a new
+   resource, add a `Resolve<X>` in `internal/resolver` and a `Resolve<X>ID` wrapper on
+   `cli.Context`.
+4. Issue requests with `ctx.Client.Do(cmd.Context(), method, path, body)` (path relative
+   to `/api`), decode with `api.DecodeJSON`, and render with `ctx.Printer`.
+5. **Never write to `os.Stdout`/`os.Stderr` directly.** Use `ctx.Printer` or
+   `cmd.OutOrStdout()` / `cmd.ErrOrStderr()` so output honors `--output`, redirection,
+   and ANSI stripping — and so the test harness can capture it.
+6. Register a new group in `cmd/semctl/main.go`.
+
+### Testing a command
+
+Use the shared harness in `internal/testutil` — do **not** hand-roll a cobra root or
+swap the global `os.Stdout`:
+
+```go
+func TestRunnerList(t *testing.T) {
+    srv := testutil.NewMockServer()
+    defer srv.Close()
+    srv.ExpectJSON("GET", "/api/runners", 200, []api.Runner{{ID: 1, Name: "web"}})
+
+    stdout, _, err := testutil.RunCommand(t, NewRunnerCommand(), "runner", "list", "--host", srv.URL())
+    if err != nil {
+        t.Fatalf("unexpected error: %v", err)
+    }
+    if !strings.Contains(stdout, "web") {
+        t.Fatalf("expected web in output, got: %s", stdout)
+    }
+}
+```
+
+- `testutil.RunCommand(t, cmd, args...)` builds the real root with the global flags,
+  isolates config to a temp dir, and returns captured `stdout, stderr, err`.
+- For tests that seed config and read it back, use `h := testutil.New(t)` with
+  `h.WriteConfig(t, cfg)` and `h.Run(t, cmd, args...)`.
+- `testutil.MockServer` serves canned responses (`Expect`/`ExpectJSON`) and records
+  calls (`AssertCalled`); use a raw `httptest` server when a test must inspect request
+  bodies.
+
 ## Testing
 
-- **Unit tests:** cover pure logic, config precedence, auth, output rendering, and error mapping.
+- **Unit tests:** cover pure logic, config precedence, auth, output rendering, and error mapping. Command tests use the `internal/testutil` harness (see *Adding a command* above).
 - **Golden tests:** use fixtures under `testdata/golden/` for stable output formatting.
 - **Integration / E2E tests:** run against a disposable Semaphore UI instance via Docker Compose. See `mise run test-e2e`.
 

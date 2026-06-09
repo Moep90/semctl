@@ -36,8 +36,39 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
-      - name: Run tests
-        run: go test -race -count=1 ./...
+      - name: Run tests with coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test -race -covermode=atomic -coverprofile=coverage.out -count=1 ./... | tee coverage.txt
+
+      - name: Coverage summary
+        if: always()
+        shell: bash
+        run: |
+          [ -f coverage.out ] || exit 0
+          total=$(go tool cover -func=coverage.out | tail -1 | awk '{print $NF}')
+          echo "Total coverage: ${total}"
+          {
+            echo "## Test coverage: ${total}"
+            echo ""
+            echo '```'
+            grep -E 'coverage:|no test files' coverage.txt \
+              | sed -E 's#github.com/moep90/semaphore-cli/##' || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage profile
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-profile
+          path: coverage.out
+          if-no-files-found: warn
+
+      - name: Coverage floor
+        shell: bash
+        run: bash scripts/check-coverage.sh
 
       - name: Run govulncheck
         uses: golang/govulncheck-action@b625fbe08f3bccbe446d94fbf87fcc875a4f50ee # v1.0.4
@@ -54,10 +85,10 @@ jobs:
           go-version-file: go.mod
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@55c2c1448f86e01eaae002a5a3a9624417608d84 # v6.5.2
+        uses: golangci/golangci-lint-action@db582008a42febd596419635a5abc9d9815daa9c # v9.2.1
         with:
-          version: latest
-          args: --timeout=5m
+          # golangci-lint v2 (matches the v2 .golangci.yml and the mise.toml pin).
+          version: v2.12.2
 
   e2e:
     runs-on: ubuntu-latest

@@ -15,19 +15,15 @@
 package task
 
 import (
-	"bytes"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/spf13/cobra"
-
 	"github.com/moep90/semaphore-cli/internal/api"
+	"github.com/moep90/semaphore-cli/internal/testutil"
 )
 
 func TestListCommand(t *testing.T) {
@@ -43,18 +39,12 @@ func TestListCommand(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
-
-	var buf bytes.Buffer
-	root := newTestRoot(&buf)
-	root.SetArgs([]string{"task", "list", "--host", srv.URL, "--project", "infra", "--output", "json"})
-	if err := root.Execute(); err != nil {
+	stdout, _, err := testutil.RunCommand(t, NewTaskCommand(), "task", "list", "--host", srv.URL, "--project", "infra", "--output", "json")
+	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	var out []map[string]any
-	if err := json.Unmarshal(buf.Bytes(), &out); err != nil {
+	if err := json.Unmarshal([]byte(stdout), &out); err != nil {
 		t.Fatalf("invalid json: %v", err)
 	}
 	if len(out) != 1 {
@@ -84,28 +74,12 @@ func TestRunCommand(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
-
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	root := newTestRoot(nil)
-	root.SetArgs([]string{"task", "run", "deploy-prod", "--host", srv.URL, "--project", "infra", "--message", "Deploy release 1.8.3"})
-	err := root.Execute()
-
-	_ = w.Close()
-	os.Stdout = oldStdout
-
+	stdout, _, err := testutil.RunCommand(t, NewTaskCommand(), "task", "run", "deploy-prod", "--host", srv.URL, "--project", "infra", "--message", "Deploy release 1.8.3")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	data, _ := io.ReadAll(r)
-	out := string(data)
-	if !strings.Contains(out, "Queued task 812") {
-		t.Fatalf("expected task queued message, got: %s", out)
+	if !strings.Contains(stdout, "Queued task 812") {
+		t.Fatalf("expected task queued message, got: %s", stdout)
 	}
 }
 
@@ -149,28 +123,12 @@ func TestRunCommandWithEnvInvResolution(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
-
-	oldStdout := os.Stdout
-	rPipe, wPipe, _ := os.Pipe()
-	os.Stdout = wPipe
-
-	root := newTestRoot(nil)
-	root.SetArgs([]string{"task", "run", "deploy-prod", "--host", srv.URL, "--project", "infra", "--environment", "production", "--inventory", "prod-hosts"})
-	err := root.Execute()
-
-	_ = wPipe.Close()
-	os.Stdout = oldStdout
-
+	stdout, _, err := testutil.RunCommand(t, NewTaskCommand(), "task", "run", "deploy-prod", "--host", srv.URL, "--project", "infra", "--environment", "production", "--inventory", "prod-hosts")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	data, _ := io.ReadAll(rPipe)
-	out := string(data)
-	if !strings.Contains(out, "Queued task 812") {
-		t.Fatalf("expected task queued message, got: %s", out)
+	if !strings.Contains(stdout, "Queued task 812") {
+		t.Fatalf("expected task queued message, got: %s", stdout)
 	}
 }
 
@@ -191,28 +149,12 @@ func TestStopCommand(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
-
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	root := newTestRoot(nil)
-	root.SetArgs([]string{"task", "stop", "812", "--host", srv.URL, "--project", "infra"})
-	err := root.Execute()
-
-	_ = w.Close()
-	os.Stdout = oldStdout
-
+	stdout, _, err := testutil.RunCommand(t, NewTaskCommand(), "task", "stop", "812", "--host", srv.URL, "--project", "infra")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	data, _ := io.ReadAll(r)
-	out := string(data)
-	if !strings.Contains(out, "Stopped task 812") {
-		t.Fatalf("expected stop confirmation, got: %s", out)
+	if !strings.Contains(stdout, "Stopped task 812") {
+		t.Fatalf("expected stop confirmation, got: %s", stdout)
 	}
 }
 
@@ -232,28 +174,12 @@ func TestLogsCommand(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
-
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	root := newTestRoot(nil)
-	root.SetArgs([]string{"task", "logs", "812", "--host", srv.URL, "--project", "infra"})
-	err := root.Execute()
-
-	_ = w.Close()
-	os.Stdout = oldStdout
-
+	stdout, _, err := testutil.RunCommand(t, NewTaskCommand(), "task", "logs", "812", "--host", srv.URL, "--project", "infra")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	data, _ := io.ReadAll(r)
-	out := string(data)
-	if !strings.Contains(out, "hello world") {
-		t.Fatalf("expected log output, got: %s", out)
+	if !strings.Contains(stdout, "hello world") {
+		t.Fatalf("expected log output, got: %s", stdout)
 	}
 }
 
@@ -297,36 +223,28 @@ func TestLogsFollowDeduplication(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
-
-	oldStdout := os.Stdout
-	rPipe, wPipe, _ := os.Pipe()
-	os.Stdout = wPipe
-
-	root := newTestRoot(nil)
-	root.SetArgs([]string{"task", "logs", "812", "--host", srv.URL, "--project", "infra", "--follow", "--interval", "10ms"})
-
 	// Run with a timeout to avoid hanging if the test breaks.
-	done := make(chan error, 1)
-	go func() { done <- root.Execute() }()
+	type result struct {
+		stdout string
+		err    error
+	}
+	done := make(chan result, 1)
+	go func() {
+		stdout, _, err := testutil.RunCommand(t, NewTaskCommand(), "task", "logs", "812", "--host", srv.URL, "--project", "infra", "--follow", "--interval", "10ms")
+		done <- result{stdout: stdout, err: err}
+	}()
 
+	var out string
 	select {
-	case err := <-done:
-		_ = wPipe.Close()
-		os.Stdout = oldStdout
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
+	case res := <-done:
+		if res.err != nil {
+			t.Fatalf("unexpected error: %v", res.err)
 		}
+		out = res.stdout
 	case <-time.After(2 * time.Second):
-		_ = wPipe.Close()
-		os.Stdout = oldStdout
 		t.Fatal("follow logs timed out")
 	}
 
-	data, _ := io.ReadAll(rPipe)
-	out := string(data)
 	// Count occurrences of each line.
 	countOne := strings.Count(out, "line one")
 	countTwo := strings.Count(out, "line two")
@@ -339,26 +257,4 @@ func TestLogsFollowDeduplication(t *testing.T) {
 	if callCount < 2 {
 		t.Fatalf("expected at least 2 API calls, got %d", callCount)
 	}
-}
-
-func newTestRoot(out *bytes.Buffer) *cobra.Command {
-	root := &cobra.Command{
-		Use:           "semctl",
-		SilenceUsage:  true,
-		SilenceErrors: true,
-	}
-	root.PersistentFlags().String("host", "", "")
-	root.PersistentFlags().StringP("project", "p", "", "")
-	root.PersistentFlags().StringP("output", "o", "", "")
-	root.PersistentFlags().String("profile", "", "")
-	root.PersistentFlags().Bool("json", false, "")
-	root.PersistentFlags().Bool("no-color", false, "")
-	root.PersistentFlags().Bool("verbose", false, "")
-	root.PersistentFlags().Bool("debug", false, "")
-	root.AddCommand(NewTaskCommand())
-	if out != nil {
-		root.SetOut(out)
-		root.SetErr(out)
-	}
-	return root
 }

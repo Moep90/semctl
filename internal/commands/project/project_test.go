@@ -15,24 +15,21 @@
 package project
 
 import (
-	"bytes"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/spf13/cobra"
-
 	"github.com/moep90/semaphore-cli/internal/api"
+	"github.com/moep90/semaphore-cli/internal/config"
+	"github.com/moep90/semaphore-cli/internal/testutil"
 )
 
 func TestListCommand(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode([]api.Project{
 			{ID: 1, Name: "infra", MaxParallelTasks: 5},
 			{ID: 2, Name: "app", MaxParallelTasks: 3},
@@ -41,37 +38,21 @@ func TestListCommand(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
-
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	root := newTestRoot(nil)
-	root.SetArgs([]string{"project", "list", "--host", srv.URL})
-	err := root.Execute()
-
-	_ = w.Close()
-	os.Stdout = oldStdout
-
+	stdout, _, err := testutil.RunCommand(t, NewProjectCommand(), "project", "list", "--host", srv.URL)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	data, _ := io.ReadAll(r)
-	out := string(data)
-	if !strings.Contains(out, "infra") {
-		t.Fatalf("expected infra in output, got: %s", out)
+	if !strings.Contains(stdout, "infra") {
+		t.Fatalf("expected infra in output, got: %s", stdout)
 	}
-	if !strings.Contains(out, "app") {
-		t.Fatalf("expected app in output, got: %s", out)
+	if !strings.Contains(stdout, "app") {
+		t.Fatalf("expected app in output, got: %s", stdout)
 	}
 }
 
 func TestListCommandJSON(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode([]api.Project{
 			{ID: 1, Name: "infra"},
 		})
@@ -79,31 +60,16 @@ func TestListCommandJSON(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
-
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	root := newTestRoot(nil)
-	root.SetArgs([]string{"project", "list", "--host", srv.URL, "--output", "json"})
-	err := root.Execute()
-
-	_ = w.Close()
-	os.Stdout = oldStdout
-
+	stdout, _, err := testutil.RunCommand(t, NewProjectCommand(), "project", "list", "--host", srv.URL, "--output", "json")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	data, _ := io.ReadAll(r)
-	if len(data) == 0 {
+	if len(stdout) == 0 {
 		t.Fatal("empty output")
 	}
 	var out []map[string]any
-	if err := json.Unmarshal(data, &out); err != nil {
-		t.Fatalf("invalid json output (%q): %v", string(data), err)
+	if err := json.Unmarshal([]byte(stdout), &out); err != nil {
+		t.Fatalf("invalid json output (%q): %v", stdout, err)
 	}
 	if len(out) != 1 {
 		t.Fatalf("expected 1 project, got %d", len(out))
@@ -112,7 +78,7 @@ func TestListCommandJSON(t *testing.T) {
 
 func TestListCommandJSONFlag(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode([]api.Project{
 			{ID: 1, Name: "infra"},
 		})
@@ -120,31 +86,16 @@ func TestListCommandJSONFlag(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
-
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	root := newTestRoot(nil)
-	root.SetArgs([]string{"project", "list", "--host", srv.URL, "--json"})
-	err := root.Execute()
-
-	_ = w.Close()
-	os.Stdout = oldStdout
-
+	stdout, _, err := testutil.RunCommand(t, NewProjectCommand(), "project", "list", "--host", srv.URL, "--json")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	data, _ := io.ReadAll(r)
-	if len(data) == 0 {
+	if len(stdout) == 0 {
 		t.Fatal("empty output")
 	}
 	var out []map[string]any
-	if err := json.Unmarshal(data, &out); err != nil {
-		t.Fatalf("invalid json output (%q): %v", string(data), err)
+	if err := json.Unmarshal([]byte(stdout), &out); err != nil {
+		t.Fatalf("invalid json output (%q): %v", stdout, err)
 	}
 	if len(out) != 1 {
 		t.Fatalf("expected 1 project, got %d", len(out))
@@ -153,7 +104,7 @@ func TestListCommandJSONFlag(t *testing.T) {
 
 func TestListCommandOutputOverridesJSON(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode([]api.Project{
 			{ID: 1, Name: "infra"},
 		})
@@ -161,81 +112,48 @@ func TestListCommandOutputOverridesJSON(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
-
-	oldStdout := os.Stdout
-	rPipe, wPipe, _ := os.Pipe()
-	os.Stdout = wPipe
-
-	root := newTestRoot(nil)
-	// --output yaml should win over --json when explicitly set
-	root.SetArgs([]string{"project", "list", "--host", srv.URL, "--json", "--output", "yaml"})
-	err := root.Execute()
-
-	_ = wPipe.Close()
-	os.Stdout = oldStdout
-
+	// --output yaml should win over --json when explicitly set.
+	stdout, _, err := testutil.RunCommand(t, NewProjectCommand(), "project", "list", "--host", srv.URL, "--json", "--output", "yaml")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	data, _ := io.ReadAll(rPipe)
-	out := string(data)
-	if !strings.Contains(out, "infra") {
-		t.Fatalf("expected infra in output, got: %s", out)
+	if !strings.Contains(stdout, "infra") {
+		t.Fatalf("expected infra in output, got: %s", stdout)
 	}
-	// YAML output should NOT be JSON array
-	if strings.HasPrefix(strings.TrimSpace(out), "[") {
-		t.Fatalf("expected YAML output, got JSON: %s", out)
+	if strings.HasPrefix(strings.TrimSpace(stdout), "[") {
+		t.Fatalf("expected YAML output, got JSON: %s", stdout)
 	}
 }
 
 func TestGetCommand(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode([]api.Project{
 			{ID: 1, Name: "infra"},
 			{ID: 2, Name: "app"},
 		})
 	})
-	mux.HandleFunc("/api/project/2", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/project/2", func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(api.Project{ID: 2, Name: "app", MaxParallelTasks: 3})
 	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
-
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	root := newTestRoot(nil)
-	root.SetArgs([]string{"project", "get", "app", "--host", srv.URL})
-	err := root.Execute()
-
-	_ = w.Close()
-	os.Stdout = oldStdout
-
+	stdout, _, err := testutil.RunCommand(t, NewProjectCommand(), "project", "get", "app", "--host", srv.URL)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	data, _ := io.ReadAll(r)
-	out := string(data)
-	if !strings.Contains(out, "app") {
-		t.Fatalf("expected app in output, got: %s", out)
+	if !strings.Contains(stdout, "app") {
+		t.Fatalf("expected app in output, got: %s", stdout)
 	}
-	if !strings.Contains(out, "max_parallel_tasks") {
-		t.Fatalf("expected max_parallel_tasks in output, got: %s", out)
+	if !strings.Contains(stdout, "max_parallel_tasks") {
+		t.Fatalf("expected max_parallel_tasks in output, got: %s", stdout)
 	}
 }
 
 func TestDeleteCommand(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode([]api.Project{
 			{ID: 2, Name: "app"},
 		})
@@ -250,18 +168,12 @@ func TestDeleteCommand(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
-
-	var buf bytes.Buffer
-	root := newTestRoot(&buf)
-	root.SetArgs([]string{"project", "delete", "app", "--host", srv.URL})
-	if err := root.Execute(); err != nil {
+	stdout, _, err := testutil.RunCommand(t, NewProjectCommand(), "project", "delete", "app", "--host", srv.URL)
+	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(buf.String(), "Deleted project") {
-		t.Fatalf("expected success message, got: %s", buf.String())
+	if !strings.Contains(stdout, "Deleted project") {
+		t.Fatalf("expected success message, got: %s", stdout)
 	}
 }
 
@@ -286,24 +198,18 @@ func TestCreateCommand(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
-
-	var buf bytes.Buffer
-	root := newTestRoot(&buf)
-	root.SetArgs([]string{"project", "create", "--name", "infra", "--host", srv.URL})
-	if err := root.Execute(); err != nil {
+	stdout, _, err := testutil.RunCommand(t, NewProjectCommand(), "project", "create", "--name", "infra", "--host", srv.URL)
+	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(buf.String(), "Created project") {
-		t.Fatalf("expected success message, got: %s", buf.String())
+	if !strings.Contains(stdout, "Created project") {
+		t.Fatalf("expected success message, got: %s", stdout)
 	}
 }
 
 func TestSetCommand(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode([]api.Project{
 			{ID: 1, Name: "infra"},
 		})
@@ -311,51 +217,27 @@ func TestSetCommand(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	tmp := t.TempDir()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
+	// Seed a config with an active profile pointing at the test server.
+	h := testutil.New(t)
+	cfg := config.DefaultConfig()
+	cfg.CurrentProfile = "test"
+	cfg.Profiles["test"] = &config.Profile{Host: srv.URL}
+	h.WriteConfig(t, cfg)
 
-	// Seed a config with an active profile.
-	cfgPath := filepath.Join(tmp, "semctl", "config.yml")
-	_ = os.MkdirAll(filepath.Dir(cfgPath), 0750)
-	data := []byte("current_profile: test\nprofiles:\n  test:\n    host: " + srv.URL + "\n")
-	_ = os.WriteFile(cfgPath, data, 0600)
-
-	var buf bytes.Buffer
-	root := newTestRoot(&buf)
-	root.SetArgs([]string{"project", "set", "infra", "--host", srv.URL, "--output", "json"})
-	if err := root.Execute(); err != nil {
+	stdout, _, err := h.Run(t, NewProjectCommand(), "project", "set", "infra", "--host", srv.URL, "--output", "json")
+	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(buf.String(), "Set project") {
-		t.Fatalf("expected success message, got: %s", buf.String())
+	if !strings.Contains(stdout, "Set project") {
+		t.Fatalf("expected success message, got: %s", stdout)
 	}
 
-	// Verify profile was updated.
-	read, _ := os.ReadFile(cfgPath)
+	// Verify the profile was persisted.
+	read, err := os.ReadFile(config.Path())
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
 	if !strings.Contains(string(read), "output: json") && !strings.Contains(string(read), "default_output: json") {
 		t.Fatalf("expected profile output to be updated, got: %s", string(read))
 	}
-}
-
-func newTestRoot(out *bytes.Buffer) *cobra.Command {
-	root := &cobra.Command{
-		Use:           "semctl",
-		SilenceUsage:  true,
-		SilenceErrors: true,
-	}
-	root.PersistentFlags().String("host", "", "")
-	root.PersistentFlags().StringP("project", "p", "", "")
-	root.PersistentFlags().StringP("output", "o", "", "")
-	root.PersistentFlags().String("profile", "", "")
-	root.PersistentFlags().Bool("json", false, "")
-	root.PersistentFlags().Bool("no-color", false, "")
-	root.PersistentFlags().Bool("verbose", false, "")
-	root.PersistentFlags().Bool("debug", false, "")
-	root.AddCommand(NewProjectCommand())
-	if out != nil {
-		root.SetOut(out)
-		root.SetErr(out)
-	}
-	return root
 }
