@@ -87,7 +87,9 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@55c2c1448f86e01eaae002a5a3a9624417608d84 # v6.5.2
         with:
-          version: latest
+          # Pinned to the last v1 release to match .golangci.yml (v1 config) and
+          # the mise.toml pin. v2 rejects the current config syntax.
+          version: v1.64.8
           args: --timeout=5m
 
   e2e:
