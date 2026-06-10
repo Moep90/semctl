@@ -16,6 +16,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 
@@ -100,6 +101,7 @@ func formatError(cmd *cobra.Command, err error, w io.Writer) (int, error) {
 	jsonFlag, _ := cmd.PersistentFlags().GetBool("json")
 	outputFlag, _ := cmd.PersistentFlags().GetString("output")
 	verbose, _ := cmd.PersistentFlags().GetBool("verbose")
+	debug, _ := cmd.PersistentFlags().GetBool("debug")
 	switch {
 	case jsonFlag || outputFlag == "json":
 		return se.ExitCode, json.NewEncoder(w).Encode(map[string]any{"error": se.Payload()})
@@ -107,6 +109,13 @@ func formatError(cmd *cobra.Command, err error, w io.Writer) (int, error) {
 		return se.ExitCode, yaml.NewEncoder(w).Encode(map[string]any{"error": se.Payload()})
 	default:
 		se.WriteHuman(w, verbose)
+		// --debug surfaces the underlying cause (which may carry the response
+		// body) that the default message deliberately omits.
+		if debug {
+			if cause := se.Cause(); cause != nil {
+				fmt.Fprintf(w, "\nCause (debug):\n  %v\n", cause)
+			}
+		}
 		return se.ExitCode, nil
 	}
 }
