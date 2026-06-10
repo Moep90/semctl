@@ -149,23 +149,25 @@ func fromAPIError(e *api.Error) *SemError {
 		code = "SEM500011" // API_UNEXPECTED_STATUS
 	}
 	se := New(code).WithHTTPStatus(e.StatusCode).Wrap(e)
+	// The builder methods mutate in place and return the receiver for chaining;
+	// reassign so the (error-typed) return is not discarded (errcheck).
 	if e.Method != "" {
-		se.With("method", e.Method)
+		se = se.With("method", e.Method)
 	}
 	if e.Path != "" {
-		se.With("path", e.Path)
+		se = se.With("path", e.Path)
 	}
 	if e.RequestID != "" {
-		se.With("request_id", e.RequestID)
+		se = se.With("request_id", e.RequestID)
 	}
 	if e.RetryAfter != "" {
-		se.With("retry_after", e.RetryAfter)
+		se = se.With("retry_after", e.RetryAfter)
 	}
 	// Build the message from method/path/status only — never the response body.
 	if e.Method != "" && e.Path != "" {
-		se.WithMessagef("%s %s returned HTTP %d.", e.Method, e.Path, e.StatusCode)
+		se = se.WithMessagef("%s %s returned HTTP %d.", e.Method, e.Path, e.StatusCode)
 	} else {
-		se.WithMessagef("The API returned HTTP %d.", e.StatusCode)
+		se = se.WithMessagef("The API returned HTTP %d.", e.StatusCode)
 	}
 	return se
 }
