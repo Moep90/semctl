@@ -31,7 +31,7 @@ func main() {
 		os.Exit(1)
 	}
 	path := filepath.Join(root, "docs", "errors.md")
-	if err := os.WriteFile(path, []byte(semerr.RenderMarkdown()), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(semerr.RenderMarkdown()), 0o600); err != nil {
 		fmt.Fprintln(os.Stderr, "gen-errors-doc:", err)
 		os.Exit(1)
 	}
