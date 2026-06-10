@@ -18,11 +18,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 
+	"github.com/moep90/semaphore-cli/internal/api"
 	"github.com/moep90/semaphore-cli/internal/cli"
 )
 
@@ -38,41 +40,80 @@ func cmdWithOutput(t *testing.T, mode string) *cobra.Command {
 	return cmd
 }
 
-func TestErrorOutputJSON(t *testing.T) {
+// decodeErrorObject decodes {"error": {...}} from JSON output.
+func decodeErrorObject(t *testing.T, b []byte) map[string]any {
+	t.Helper()
+	var out struct {
+		Error map[string]any `json:"error"`
+	}
+	if err := json.Unmarshal(b, &out); err != nil {
+		t.Fatalf("expected JSON output, got: %s", b)
+	}
+	if out.Error == nil {
+		t.Fatalf("expected structured error object, got: %s", b)
+	}
+	return out.Error
+}
+
+func TestErrorOutputJSONStructured(t *testing.T) {
 	var buf bytes.Buffer
-	if err := formatError(cmdWithOutput(t, "json"), errors.New("test error"), &buf); err != nil {
+	// A plain error classifies to SEM000001 (UNKNOWN_ERROR), message preserved.
+	code, err := formatError(cmdWithOutput(t, "json"), errors.New("test error"), &buf)
+	if err != nil {
 		t.Fatalf("formatError: %v", err)
 	}
-	var out map[string]string
-	if err := json.Unmarshal(buf.Bytes(), &out); err != nil {
-		t.Fatalf("expected JSON output, got: %s", buf.String())
+	if code != 1 {
+		t.Fatalf("unknown error exit code = %d, want 1", code)
 	}
-	if out["error"] != "test error" {
-		t.Fatalf("unexpected error content: %v", out)
+	obj := decodeErrorObject(t, buf.Bytes())
+	if obj["code"] != "SEM000001" {
+		t.Fatalf("code: %v", obj["code"])
+	}
+	if obj["message"] != "test error" {
+		t.Fatalf("message: %v", obj["message"])
+	}
+}
+
+func TestErrorOutputJSONAPINotFound(t *testing.T) {
+	var buf bytes.Buffer
+	apiErr := fmt.Errorf("api request: %w", &api.Error{StatusCode: 404, Method: "GET", Path: "/project/1/tasks/last"})
+	code, err := formatError(cmdWithOutput(t, "json"), apiErr, &buf)
+	if err != nil {
+		t.Fatalf("formatError: %v", err)
+	}
+	if code != 44 {
+		t.Fatalf("404 exit code = %d, want 44", code)
+	}
+	obj := decodeErrorObject(t, buf.Bytes())
+	if obj["code"] != "SEM500004" {
+		t.Fatalf("code: %v", obj["code"])
+	}
+	if obj["http_status"] != float64(404) {
+		t.Fatalf("http_status: %v", obj["http_status"])
 	}
 }
 
 func TestErrorOutputYAML(t *testing.T) {
 	var buf bytes.Buffer
-	if err := formatError(cmdWithOutput(t, "yaml"), errors.New("test error"), &buf); err != nil {
+	if _, err := formatError(cmdWithOutput(t, "yaml"), errors.New("test error"), &buf); err != nil {
 		t.Fatalf("formatError: %v", err)
 	}
-	if !strings.Contains(buf.String(), "error") {
-		t.Fatalf("expected error in output, got: %s", buf.String())
+	if !strings.Contains(buf.String(), "SEM000001") {
+		t.Fatalf("expected error code in YAML output, got: %s", buf.String())
 	}
 }
 
 func TestErrorOutputPlain(t *testing.T) {
 	var buf bytes.Buffer
-	if err := formatError(cmdWithOutput(t, ""), errors.New("test error"), &buf); err != nil {
+	if _, err := formatError(cmdWithOutput(t, ""), errors.New("test error"), &buf); err != nil {
 		t.Fatalf("formatError: %v", err)
 	}
-	if !strings.Contains(buf.String(), "error: test error") {
-		t.Fatalf("expected plain text error, got: %s", buf.String())
+	out := buf.String()
+	if !strings.Contains(out, "error SEM000001") || !strings.Contains(out, "test error") {
+		t.Fatalf("expected structured plain text error, got: %s", out)
 	}
 }
 
-// TestErrorOutputJSONShorthand verifies the --json shorthand also triggers JSON.
 func TestErrorOutputJSONShorthand(t *testing.T) {
 	cmd := &cobra.Command{Use: "semctl"}
 	cli.RegisterGlobalFlags(cmd)
@@ -80,14 +121,11 @@ func TestErrorOutputJSONShorthand(t *testing.T) {
 		t.Fatalf("set json flag: %v", err)
 	}
 	var buf bytes.Buffer
-	if err := formatError(cmd, errors.New("boom"), &buf); err != nil {
+	if _, err := formatError(cmd, errors.New("boom"), &buf); err != nil {
 		t.Fatalf("formatError: %v", err)
 	}
-	var out map[string]string
-	if err := json.Unmarshal(buf.Bytes(), &out); err != nil {
-		t.Fatalf("expected JSON output, got: %s", buf.String())
-	}
-	if out["error"] != "boom" {
-		t.Fatalf("unexpected error content: %v", out)
+	obj := decodeErrorObject(t, buf.Bytes())
+	if obj["message"] != "boom" {
+		t.Fatalf("unexpected error content: %v", obj)
 	}
 }
