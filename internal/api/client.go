@@ -169,7 +169,7 @@ func (c *Client) FetchAllPages(ctx context.Context, path string, dest any) error
 		if resp.StatusCode >= 400 {
 			body, _ := io.ReadAll(resp.Body)
 			_ = resp.Body.Close()
-			return &Error{StatusCode: resp.StatusCode, Body: body}
+			return newError(resp, body)
 		}
 		pageSlice := reflect.New(reflect.SliceOf(elemType)).Interface()
 		if err := json.NewDecoder(resp.Body).Decode(pageSlice); err != nil {
@@ -230,8 +230,9 @@ func (c *Client) DoWithHeaders(ctx context.Context, method, path string, body an
 
 		// Drain and close body before retry to allow connection reuse.
 		_, _ = io.Copy(io.Discard, resp.Body)
+		reqID := requestID(resp.Header)
 		_ = resp.Body.Close()
-		lastErr = &Error{StatusCode: resp.StatusCode}
+		lastErr = &Error{StatusCode: resp.StatusCode, Method: method, Path: pathOnlyForError(path), RequestID: reqID}
 	}
 	return nil, fmt.Errorf("request failed after %d attempts: %w", c.maxRetries+1, lastErr)
 }
@@ -343,7 +344,7 @@ func CheckResponse(resp *http.Response) error {
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(resp.Body)
-		return &Error{StatusCode: resp.StatusCode, Body: body}
+		return newError(resp, body)
 	}
 	return nil
 }
@@ -353,7 +354,7 @@ func DecodeJSON(resp *http.Response, dest any) error {
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(resp.Body)
-		return &Error{StatusCode: resp.StatusCode, Body: body}
+		return newError(resp, body)
 	}
 	if dest == nil {
 		return nil
@@ -361,10 +362,48 @@ func DecodeJSON(resp *http.Response, dest any) error {
 	return json.NewDecoder(resp.Body).Decode(dest)
 }
 
-// Error represents an API error response.
+// Error represents an API error response. Method, Path, and RequestID are
+// populated for diagnostics and structured error classification; Body is for
+// debug/cause only and must never be surfaced in user-facing output.
 type Error struct {
 	StatusCode int
 	Body       []byte
+	Method     string
+	Path       string
+	RequestID  string
+}
+
+// newError builds an *Error from a response, recovering the logical request
+// path (without the "/api" prefix the client adds) and a request id header.
+func newError(resp *http.Response, body []byte) *Error {
+	e := &Error{StatusCode: resp.StatusCode, Body: body}
+	if resp.Request != nil {
+		e.Method = resp.Request.Method
+		if resp.Request.URL != nil {
+			e.Path = strings.TrimPrefix(resp.Request.URL.Path, "/api")
+		}
+	}
+	e.RequestID = requestID(resp.Header)
+	return e
+}
+
+// pathOnlyForError strips any query string from a logical request path so the
+// error metadata never carries query parameters (which may include secrets).
+func pathOnlyForError(path string) string {
+	if i := strings.Index(path, "?"); i >= 0 {
+		return path[:i]
+	}
+	return path
+}
+
+// requestID returns the first present request-id style header.
+func requestID(h http.Header) string {
+	for _, k := range []string{"X-Request-Id", "X-Request-ID", "Request-Id", "X-Correlation-Id"} {
+		if v := h.Get(k); v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func (e *Error) Error() string {

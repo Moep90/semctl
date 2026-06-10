@@ -16,7 +16,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"os"
 
@@ -36,6 +35,7 @@ import (
 	"github.com/moep90/semaphore-cli/internal/commands/schedule"
 	"github.com/moep90/semaphore-cli/internal/commands/task"
 	"github.com/moep90/semaphore-cli/internal/commands/template"
+	"github.com/moep90/semaphore-cli/internal/semerr"
 )
 
 var version = "dev"
@@ -76,23 +76,37 @@ property of their respective owners.`,
 	root.AddCommand(ping.NewPingCommand())
 
 	if err := root.Execute(); err != nil {
-		_ = formatError(root, err, os.Stderr)
+		// Render the structured error. Process exit stays 1 for backward
+		// compatibility; the class exit code is surfaced in output and reserved
+		// for a future opt-in / major release.
+		_, _ = formatError(root, err, os.Stderr)
 		os.Exit(1)
 	}
 }
 
-// formatError renders a top-level error honoring the --json / --output flags.
-// It reads the flags off the command so it stays in sync with how the rest of
-// the CLI resolves output mode, rather than relying on package-level globals.
-func formatError(cmd *cobra.Command, err error, w io.Writer) error {
+// formatError renders a top-level error as a structured semerr class, honoring
+// the --json / --output / --verbose flags. It reads the flags off the command
+// so it stays in sync with how the rest of the CLI resolves output mode.
+//
+// The returned int is the error class's exit code. The process currently always
+// exits 1 (see main) for backward compatibility; surfacing the class exit code
+// here lets a future opt-in or major release activate richer exit codes in one
+// place without touching call sites.
+func formatError(cmd *cobra.Command, err error, w io.Writer) (int, error) {
+	se := semerr.Classify(err)
+	if se == nil {
+		return 0, nil
+	}
 	jsonFlag, _ := cmd.PersistentFlags().GetBool("json")
 	outputFlag, _ := cmd.PersistentFlags().GetString("output")
-	if jsonFlag || outputFlag == "json" {
-		return json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+	verbose, _ := cmd.PersistentFlags().GetBool("verbose")
+	switch {
+	case jsonFlag || outputFlag == "json":
+		return se.ExitCode, json.NewEncoder(w).Encode(map[string]any{"error": se.Payload()})
+	case outputFlag == "yaml":
+		return se.ExitCode, yaml.NewEncoder(w).Encode(map[string]any{"error": se.Payload()})
+	default:
+		se.WriteHuman(w, verbose)
+		return se.ExitCode, nil
 	}
-	if outputFlag == "yaml" {
-		return yaml.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-	}
-	_, e := fmt.Fprintf(w, "error: %v\n", err)
-	return e
 }

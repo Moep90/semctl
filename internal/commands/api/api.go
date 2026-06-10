@@ -123,7 +123,7 @@ This is the escape hatch for endpoints not yet covered by first-class commands.`
 				// non-zero. The top-level error renderer formats it as JSON/YAML
 				// on stderr when --output requests it (issue #73); --output must
 				// only change the format, never suppress the exit code.
-				return &semapi.Error{StatusCode: resp.StatusCode, Body: data}
+				return &semapi.Error{StatusCode: resp.StatusCode, Body: data, Method: method, Path: path, RequestID: resp.Header.Get("X-Request-Id")}
 			}
 
 			if len(data) == 0 {
