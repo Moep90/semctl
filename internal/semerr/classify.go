@@ -15,7 +15,15 @@
 package semerr
 
 import (
+	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/json"
 	"errors"
+	"io"
+	"net"
+	"strings"
+	"syscall"
 
 	"github.com/moep90/semaphore-cli/internal/api"
 )
@@ -52,7 +60,72 @@ func Classify(err error) *SemError {
 		return fromAPIError(apiErr)
 	}
 
+	// Transport and serialization errors carry only the class default message —
+	// the underlying error (which may include the full URL/query) stays in cause.
+	if se := fromTransport(err); se != nil {
+		return se
+	}
+	if se := fromSerialization(err); se != nil {
+		return se
+	}
+
 	return New("SEM000001").WithMessage(err.Error()).Wrap(err)
+}
+
+// fromTransport classifies network/transport errors, or returns nil.
+func fromTransport(err error) *SemError {
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
+		return New("SEM400001").Wrap(err)
+	}
+	if errors.Is(err, syscall.ECONNREFUSED) {
+		return New("SEM400005").Wrap(err)
+	}
+	if errors.Is(err, syscall.ECONNRESET) {
+		return New("SEM400006").Wrap(err)
+	}
+	var netErr net.Error
+	if (errors.As(err, &netErr) && netErr.Timeout()) || errors.Is(err, context.DeadlineExceeded) {
+		return New("SEM400002").Wrap(err)
+	}
+	if isTLSError(err) {
+		return New("SEM400003").Wrap(err)
+	}
+	return nil
+}
+
+// isTLSError reports whether err is a TLS/certificate failure.
+func isTLSError(err error) bool {
+	var (
+		unknownAuthority x509.UnknownAuthorityError
+		hostname         x509.HostnameError
+		certInvalid      x509.CertificateInvalidError
+		recordHeader     tls.RecordHeaderError
+	)
+	if errors.As(err, &unknownAuthority) || errors.As(err, &hostname) ||
+		errors.As(err, &certInvalid) || errors.As(err, &recordHeader) {
+		return true
+	}
+	return strings.Contains(err.Error(), "tls:")
+}
+
+// fromSerialization classifies response decode/schema errors, or returns nil.
+func fromSerialization(err error) *SemError {
+	var syntaxErr *json.SyntaxError
+	if errors.As(err, &syntaxErr) {
+		return New("SEM600001").Wrap(err)
+	}
+	var typeErr *json.UnmarshalTypeError
+	if errors.As(err, &typeErr) {
+		return New("SEM600002").Wrap(err)
+	}
+	if errors.Is(err, io.ErrUnexpectedEOF) {
+		return New("SEM600001").Wrap(err)
+	}
+	if errors.Is(err, io.EOF) {
+		return New("SEM600004").Wrap(err)
+	}
+	return nil
 }
 
 func fromAPIError(e *api.Error) *SemError {
@@ -69,6 +142,9 @@ func fromAPIError(e *api.Error) *SemError {
 	}
 	if e.RequestID != "" {
 		se.With("request_id", e.RequestID)
+	}
+	if e.RetryAfter != "" {
+		se.With("retry_after", e.RetryAfter)
 	}
 	// Build the message from method/path/status only — never the response body.
 	if e.Method != "" && e.Path != "" {

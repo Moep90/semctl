@@ -55,3 +55,24 @@ func TestCheckResponseErrorCarriesMethodPathAndRequestID(t *testing.T) {
 		t.Fatalf("request id: %q", apiErr.RequestID)
 	}
 }
+
+func TestRetryExhaustedErrorCapturesRetryAfter(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "30")
+		w.WriteHeader(http.StatusTooManyRequests) // retryable; exhausts immediately
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "tok").WithRetryPolicy(0, nil)
+	_, err := c.Do(context.Background(), http.MethodGet, "/projects", nil)
+	var apiErr *Error
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("expected *api.Error, got %T: %v", err, err)
+	}
+	if apiErr.StatusCode != 429 {
+		t.Fatalf("status: %d", apiErr.StatusCode)
+	}
+	if apiErr.RetryAfter != "30" {
+		t.Fatalf("retry-after: %q", apiErr.RetryAfter)
+	}
+}

@@ -114,6 +114,39 @@ func TestErrorOutputPlain(t *testing.T) {
 	}
 }
 
+func TestErrorDebugShowsCause(t *testing.T) {
+	cmd := &cobra.Command{Use: "semctl"}
+	cli.RegisterGlobalFlags(cmd)
+	if err := cmd.PersistentFlags().Set("debug", "true"); err != nil {
+		t.Fatalf("set debug flag: %v", err)
+	}
+	// The cause (api.Error) carries detail kept out of the default message.
+	wrapped := fmt.Errorf("api request: %w", &api.Error{StatusCode: 404, Method: "GET", Path: "/x", Body: []byte("boom-detail")})
+	var buf bytes.Buffer
+	if _, err := formatError(cmd, wrapped, &buf); err != nil {
+		t.Fatalf("formatError: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "SEM500004") {
+		t.Fatalf("expected class in output, got: %s", out)
+	}
+	// --debug must surface the underlying cause for diagnosis.
+	if !strings.Contains(out, "boom-detail") {
+		t.Fatalf("expected --debug to show the cause, got: %s", out)
+	}
+}
+
+func TestErrorNoDebugHidesCause(t *testing.T) {
+	wrapped := fmt.Errorf("api request: %w", &api.Error{StatusCode: 404, Method: "GET", Path: "/x", Body: []byte("boom-detail")})
+	var buf bytes.Buffer
+	if _, err := formatError(cmdWithOutput(t, ""), wrapped, &buf); err != nil {
+		t.Fatalf("formatError: %v", err)
+	}
+	if strings.Contains(buf.String(), "boom-detail") {
+		t.Fatalf("without --debug the cause/body must not appear, got: %s", buf.String())
+	}
+}
+
 func TestErrorOutputJSONShorthand(t *testing.T) {
 	cmd := &cobra.Command{Use: "semctl"}
 	cli.RegisterGlobalFlags(cmd)

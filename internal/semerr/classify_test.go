@@ -78,6 +78,22 @@ func TestClassifyAPIErrorBodyNotInMessage(t *testing.T) {
 	}
 }
 
+func TestClassifyRateLimitSurfacesRetryAfter(t *testing.T) {
+	se := Classify(&api.Error{StatusCode: 429, Method: "GET", Path: "/x", RetryAfter: "30"})
+	if se.Code != "SEM500006" {
+		t.Fatalf("code: %q", se.Code)
+	}
+	if !se.Retryable {
+		t.Fatal("429 must be retryable")
+	}
+	if se.Metadata["retry_after"] != "30" {
+		t.Fatalf("retry_after: %v", se.Metadata)
+	}
+	if se.Payload()["metadata"].(map[string]string)["retry_after"] != "30" {
+		t.Fatalf("retry_after missing from payload: %v", se.Payload()["metadata"])
+	}
+}
+
 func TestClassifyUnknownFallsBack(t *testing.T) {
 	se := Classify(errors.New("something weird"))
 	if se.Code != "SEM000001" {

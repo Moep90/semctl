@@ -231,8 +231,9 @@ func (c *Client) DoWithHeaders(ctx context.Context, method, path string, body an
 		// Drain and close body before retry to allow connection reuse.
 		_, _ = io.Copy(io.Discard, resp.Body)
 		reqID := requestID(resp.Header)
+		retryAfter := resp.Header.Get("Retry-After")
 		_ = resp.Body.Close()
-		lastErr = &Error{StatusCode: resp.StatusCode, Method: method, Path: pathOnlyForError(path), RequestID: reqID}
+		lastErr = &Error{StatusCode: resp.StatusCode, Method: method, Path: pathOnlyForError(path), RequestID: reqID, RetryAfter: retryAfter}
 	}
 	return nil, fmt.Errorf("request failed after %d attempts: %w", c.maxRetries+1, lastErr)
 }
@@ -371,6 +372,7 @@ type Error struct {
 	Method     string
 	Path       string
 	RequestID  string
+	RetryAfter string
 }
 
 // newError builds an *Error from a response, recovering the logical request
@@ -384,6 +386,7 @@ func newError(resp *http.Response, body []byte) *Error {
 		}
 	}
 	e.RequestID = requestID(resp.Header)
+	e.RetryAfter = resp.Header.Get("Retry-After")
 	return e
 }
 

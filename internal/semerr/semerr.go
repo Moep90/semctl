@@ -87,3 +87,7 @@ func (e *SemError) Error() string {
 
 // Unwrap exposes the cause for errors.Is/As.
 func (e *SemError) Unwrap() error { return e.cause }
+
+// Cause returns the underlying error for --debug rendering. It may contain
+// detail (e.g. a response body) deliberately kept out of the default message.
+func (e *SemError) Cause() error { return e.cause }
