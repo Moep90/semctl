@@ -31,4 +31,5 @@ func RegisterGlobalFlags(cmd *cobra.Command) {
 	f.Bool("verbose", false, "Verbose output")
 	f.Bool("debug", false, "Debug output")
 	f.Bool("no-interactive", false, "Disable interactive prompts")
+	f.Bool("rich-exit-codes", false, "Exit with the error class's exit code instead of 1 (also via SEMCTL_RICH_EXIT)")
 }
