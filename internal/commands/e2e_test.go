@@ -176,16 +176,43 @@ func TestE2ETaskLogsAndStop(t *testing.T) {
 		t.Fatalf("task logs failed: %v\n%s", err, out)
 	}
 
-	// Stop the task
-	cmd = exec.Command("go", "run", "../../cmd/semctl", "task", "stop", taskID, "--host", host, "--project", "test-project")
+	// Stop the task with --force. A freshly-run task is typically still
+	// waiting/starting, and a graceful stop on a queued task does not actually
+	// terminate it (the API replies 204 either way) — only --force does.
+	cmd = exec.Command("go", "run", "../../cmd/semctl", "task", "stop", taskID, "--force", "--host", host, "--project", "test-project")
 	cmd.Env = append(os.Environ(), "SEMAPHORE_TOKEN="+token)
 	out, err = cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("task stop failed: %v\n%s", err, out)
 	}
-	if !strings.Contains(string(out), "stopped") && !strings.Contains(string(out), "Stop") {
+	if !strings.Contains(strings.ToLower(string(out)), "stop") {
 		t.Fatalf("expected task stop confirmation, got: %s", out)
 	}
+
+	// Verify the EFFECT, not just the printed message: poll the task until it
+	// reaches a terminal state. Asserting only on stdout is what previously let
+	// a no-op stop pass — the API always returns 204 and the CLI always prints
+	// success, so the message proves nothing about whether the task stopped.
+	var lastStatus string
+	for i := 0; i < 30; i++ {
+		cmd = exec.Command("go", "run", "../../cmd/semctl", "task", "get", taskID, "--host", host, "--project", "test-project", "--output", "json")
+		cmd.Env = append(os.Environ(), "SEMAPHORE_TOKEN="+token)
+		out, err = cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("task get failed: %v\n%s", err, out)
+		}
+		var task map[string]any
+		if err := json.Unmarshal(out, &task); err != nil {
+			t.Fatalf("decode task get: %v\n%s", err, out)
+		}
+		lastStatus, _ = task["status"].(string)
+		switch lastStatus {
+		case "stopped", "stopping", "success", "error":
+			return // task is no longer waiting/running — stop took effect
+		}
+		time.Sleep(time.Second)
+	}
+	t.Fatalf("task %s did not reach a terminal state after --force stop, last status: %q", taskID, lastStatus)
 }
 
 func TestE2EAPIInfo(t *testing.T) {
