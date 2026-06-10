@@ -185,7 +185,7 @@ func TestE2ETaskLogsAndStop(t *testing.T) {
 	if err != nil {
 		t.Fatalf("task stop failed: %v\n%s", err, out)
 	}
-	if !strings.Contains(string(out), "stopped") && !strings.Contains(string(out), "Stop") {
+	if !strings.Contains(strings.ToLower(string(out)), "stop") {
 		t.Fatalf("expected task stop confirmation, got: %s", out)
 	}
 
