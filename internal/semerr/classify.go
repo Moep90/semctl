@@ -143,6 +143,9 @@ func fromAPIError(e *api.Error) *SemError {
 	if e.RequestID != "" {
 		se.With("request_id", e.RequestID)
 	}
+	if e.RetryAfter != "" {
+		se.With("retry_after", e.RetryAfter)
+	}
 	// Build the message from method/path/status only — never the response body.
 	if e.Method != "" && e.Path != "" {
 		se.WithMessagef("%s %s returned HTTP %d.", e.Method, e.Path, e.StatusCode)
