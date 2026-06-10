@@ -42,6 +42,16 @@ import (
 var version = "dev"
 
 func main() {
+	root := newRootCommand()
+	if err := root.Execute(); err != nil {
+		code, _ := formatError(root, err, os.Stderr)
+		os.Exit(resolveExitCode(root, code))
+	}
+}
+
+// newRootCommand builds the fully wired root command. Extracted from main so it
+// can be exercised in tests (e.g. flag-error classification).
+func newRootCommand() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "semctl",
 		Short: "Semaphore UI CLI",
@@ -61,6 +71,12 @@ property of their respective owners.`,
 		},
 	}
 
+	// Classify flag-parse errors (unknown flag, bad value) as a CLI-usage class.
+	// Inherited by all subcommands unless they set their own.
+	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+		return semerr.New("SEM100003").WithMessage(err.Error()).Wrap(err)
+	})
+
 	cli.RegisterGlobalFlags(root)
 
 	root.AddCommand(auth.NewAuthCommand())
@@ -76,13 +92,21 @@ property of their respective owners.`,
 	root.AddCommand(info.NewInfoCommand())
 	root.AddCommand(ping.NewPingCommand())
 
-	if err := root.Execute(); err != nil {
-		// Render the structured error. Process exit stays 1 for backward
-		// compatibility; the class exit code is surfaced in output and reserved
-		// for a future opt-in / major release.
-		_, _ = formatError(root, err, os.Stderr)
-		os.Exit(1)
+	return root
+}
+
+// resolveExitCode decides the process exit code. By default every failure exits
+// 1 (backward compatible). When --rich-exit-codes or SEMCTL_RICH_EXIT is set,
+// the per-class exit code is used instead, so automation can branch on it.
+func resolveExitCode(cmd *cobra.Command, classCode int) int {
+	rich, _ := cmd.PersistentFlags().GetBool("rich-exit-codes")
+	if !rich && os.Getenv("SEMCTL_RICH_EXIT") == "" {
+		return 1
 	}
+	if classCode <= 0 {
+		return 1
+	}
+	return classCode
 }
 
 // formatError renders a top-level error as a structured semerr class, honoring

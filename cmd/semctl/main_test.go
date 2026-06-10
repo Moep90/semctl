@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"testing"
 
@@ -26,7 +27,54 @@ import (
 
 	"github.com/moep90/semaphore-cli/internal/api"
 	"github.com/moep90/semaphore-cli/internal/cli"
+	"github.com/moep90/semaphore-cli/internal/semerr"
 )
+
+func TestNewRootClassifiesFlagErrors(t *testing.T) {
+	root := newRootCommand()
+	root.SetArgs([]string{"ping", "--definitely-not-a-flag"})
+	root.SetOut(io.Discard)
+	root.SetErr(io.Discard)
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("expected a flag-parse error")
+	}
+	var se *semerr.SemError
+	if !errors.As(err, &se) || se.Code != "SEM100003" {
+		t.Fatalf("expected SEM100003 INVALID_FLAG, got %T %v", err, err)
+	}
+}
+
+func TestResolveExitCode(t *testing.T) {
+	t.Setenv("SEMCTL_RICH_EXIT", "")
+	cmd := &cobra.Command{Use: "x"}
+	cli.RegisterGlobalFlags(cmd)
+
+	// Default: every failure exits 1 regardless of class code.
+	if got := resolveExitCode(cmd, 44); got != 1 {
+		t.Fatalf("default exit = %d, want 1", got)
+	}
+	// Opt-in via flag: use the class code.
+	if err := cmd.PersistentFlags().Set("rich-exit-codes", "true"); err != nil {
+		t.Fatalf("set flag: %v", err)
+	}
+	if got := resolveExitCode(cmd, 44); got != 44 {
+		t.Fatalf("rich exit = %d, want 44", got)
+	}
+	// A zero/absent class code still maps to 1.
+	if got := resolveExitCode(cmd, 0); got != 1 {
+		t.Fatalf("zero-class exit = %d, want 1", got)
+	}
+}
+
+func TestResolveExitCodeViaEnv(t *testing.T) {
+	t.Setenv("SEMCTL_RICH_EXIT", "1")
+	cmd := &cobra.Command{Use: "x"}
+	cli.RegisterGlobalFlags(cmd)
+	if got := resolveExitCode(cmd, 5); got != 5 {
+		t.Fatalf("env-enabled exit = %d, want 5", got)
+	}
+}
 
 // cmdWithOutput builds a command carrying the global flags with --output set to
 // mode, as if the user had passed it.
