@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"io/fs"
 	"net"
 	"strings"
 	"syscall"
@@ -68,8 +69,22 @@ func Classify(err error) *SemError {
 	if se := fromSerialization(err); se != nil {
 		return se
 	}
+	if se := fromLocal(err); se != nil {
+		return se
+	}
 
 	return New("SEM000001").WithMessage(err.Error()).Wrap(err)
+}
+
+// fromLocal classifies local filesystem errors, or returns nil.
+func fromLocal(err error) *SemError {
+	if errors.Is(err, fs.ErrNotExist) {
+		return New("SEM700001").Wrap(err)
+	}
+	if errors.Is(err, fs.ErrPermission) {
+		return New("SEM700002").Wrap(err)
+	}
+	return nil
 }
 
 // fromTransport classifies network/transport errors, or returns nil.

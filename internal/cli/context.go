@@ -29,6 +29,7 @@ import (
 	"github.com/moep90/semaphore-cli/internal/config"
 	"github.com/moep90/semaphore-cli/internal/output"
 	"github.com/moep90/semaphore-cli/internal/resolver"
+	"github.com/moep90/semaphore-cli/internal/semerr"
 )
 
 // Context holds the runtime state for a command invocation.
@@ -67,7 +68,7 @@ func BuildContext(cfg *config.Config, hostFlag, projectFlag, outputFlag, profile
 	// Resolve host.
 	ctx.Host = firstNonEmpty(hostFlag, os.Getenv("SEMAPHORE_HOST"), profileField(profile, func(p *config.Profile) string { return p.Host }))
 	if ctx.Host == "" {
-		return nil, fmt.Errorf("no host configured; use --host or set SEMAPHORE_HOST, or run 'semctl auth login'")
+		return nil, semerr.New("SEM200001").WithMessage("No Semaphore host is configured.")
 	}
 	if err := validateHost(ctx.Host); err != nil {
 		return nil, err

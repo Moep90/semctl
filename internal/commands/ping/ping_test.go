@@ -80,7 +80,8 @@ func TestPingNoHost(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when host is missing")
 	}
-	if !strings.Contains(err.Error(), "no host configured") {
-		t.Fatalf("expected error to mention missing host, got: %v", err)
+	// The no-host gate now surfaces a typed config error class.
+	if !strings.Contains(err.Error(), "SEM200001") {
+		t.Fatalf("expected SEM200001 config-not-found class, got: %v", err)
 	}
 }
