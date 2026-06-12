@@ -311,8 +311,14 @@ func TestRunCommandWithAnsibleFlags(t *testing.T) {
 		if body["skip_tags"] != "slow" {
 			t.Fatalf("expected skip_tags=slow, got %v", body["skip_tags"])
 		}
-		if body["extra_vars"] != `{"version":"1.2.3"}` {
-			t.Fatalf("expected extra_vars={\"version\":\"1.2.3\"}, got %v", body["extra_vars"])
+		// Semaphore carries extra/survey variables in the "environment" field as a
+		// JSON-encoded string, not a field named "extra_vars" (which the API
+		// silently ignores, leaving the variables empty).
+		if body["environment"] != `{"version":"1.2.3"}` {
+			t.Fatalf("expected environment={\"version\":\"1.2.3\"}, got %v", body["environment"])
+		}
+		if _, ok := body["extra_vars"]; ok {
+			t.Fatalf("must not send extra_vars field (Semaphore ignores it), got: %v", body["extra_vars"])
 		}
 		check, ok := body["check"].(bool)
 		if !ok || !check {

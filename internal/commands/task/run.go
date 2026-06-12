@@ -55,7 +55,11 @@ a status-specific exit code suitable for CI pipelines:
 
 Ansible execution can be tuned with --tags, --skip-tags, --extra-vars, and
 --check. --check enables Ansible check mode (a dry run on the target hosts),
-which is distinct from --dry-run.`,
+which is distinct from --dry-run.
+
+--extra-vars takes a JSON object and also supplies answers to a template's
+survey variables (match the survey variable names exactly), e.g.
+--extra-vars '{"target_hosts":"web01","version":"1.2.3"}'.`,
 		Example: `  semctl task run deploy-prod --message "Deploy release 1.8.3"
   semctl task run deploy-prod --watch --exit-code
   semctl task run deploy-prod --message "hotfix" --branch release/1.8
@@ -115,7 +119,7 @@ which is distinct from --dry-run.`,
 				if err := json.Unmarshal([]byte(extraVars), &probe); err != nil {
 					return fmt.Errorf("--extra-vars must be a valid JSON object: %w", err)
 				}
-				body.ExtraVars = extraVars
+				body.Environment = extraVars
 			}
 			if check {
 				body.Check = true
@@ -150,7 +154,7 @@ which is distinct from --dry-run.`,
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Dry run mode")
 	cmd.Flags().StringVar(&tags, "tags", "", "Ansible tags to run (comma-separated)")
 	cmd.Flags().StringVar(&skipTags, "skip-tags", "", "Ansible tags to skip (comma-separated)")
-	cmd.Flags().StringVar(&extraVars, "extra-vars", "", "Ansible extra variables as a raw JSON object (e.g. '{\"version\":\"1.2.3\"}')")
+	cmd.Flags().StringVar(&extraVars, "extra-vars", "", "Extra variables and survey-variable answers as a raw JSON object (e.g. '{\"version\":\"1.2.3\"}')")
 	cmd.Flags().BoolVar(&check, "check", false, "Ansible check mode (dry run on target hosts; distinct from --dry-run)")
 	cmd.Flags().BoolVar(&watch, "watch", false, "Wait for the task to complete")
 	cmd.Flags().BoolVar(&exitCode, "exit-code", false, "Return task status as process exit code")
