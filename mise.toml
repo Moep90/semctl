@@ -45,6 +45,10 @@ run = "govulncheck ./..."
 [tasks.build]
 run = "go build -o bin/semctl ./cmd/semctl"
 
+[tasks.docs]
+description = "Regenerate generated docs (docs/errors.md, docs/commands.md)"
+run = "go generate ./..."
+
 [tasks.compose-up]
 run = "docker compose up -d --wait"
 
