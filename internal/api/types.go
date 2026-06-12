@@ -147,8 +147,11 @@ type TaskRunRequest struct {
 	DryRun        bool   `json:"dry_run,omitempty"`
 	Tags          string `json:"tags,omitempty"`
 	SkipTags      string `json:"skip_tags,omitempty"`
-	ExtraVars     string `json:"extra_vars,omitempty"`
-	Check         bool   `json:"check,omitempty"`
+	// Environment carries Ansible extra variables and survey-variable answers as
+	// a JSON-encoded string. Semaphore reads this field (not "extra_vars", which
+	// it silently ignores) when applying variables to a run.
+	Environment string `json:"environment,omitempty"`
+	Check       bool   `json:"check,omitempty"`
 }
 
 // Keystore is a Semaphore UI access key / keystore entry.
