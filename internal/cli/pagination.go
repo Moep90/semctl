@@ -15,6 +15,7 @@
 package cli
 
 import (
+	"fmt"
 	"net/url"
 	"strconv"
 
@@ -77,4 +78,21 @@ func Paginate[T any](items []T, cmd *cobra.Command) []T {
 		end = len(items)
 	}
 	return items[start:end]
+}
+
+// PageHint reports which page of how many the --page and --limit flags select,
+// for the "page X of Y" line the list commands print under a table. It returns
+// an empty string when --limit is not set, since without a page size there is
+// only one page.
+func PageHint(total int, cmd *cobra.Command) string {
+	limit, _ := cmd.Flags().GetInt("limit")
+	if !cmd.Flags().Changed("limit") || limit == 0 {
+		return ""
+	}
+	page, _ := cmd.Flags().GetInt("page")
+	if page < 1 {
+		page = 1
+	}
+	pages := total / limit
+	return fmt.Sprintf("page %d of %d", page, pages)
 }
